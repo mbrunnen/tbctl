@@ -44,7 +44,7 @@ def list_packages(
     from rich.table import Table
 
     api = _get_api()
-    result = api.get_ota_packages_v1(page_size=page_size, page=0)
+    result = api.get_ota_packages(page_size=page_size, page=0)
 
     if not result.data:
         typer.echo("No OTA packages found.")
@@ -58,7 +58,7 @@ def list_packages(
     table.add_column("Size", justify="right")
 
     for pkg in result.data:
-        pkg_id = pkg.id.id if hasattr(pkg.id, "id") else str(pkg.id)
+        pkg_id = str(pkg.id.id) if pkg.id is not None else ""
         table.add_row(
             pkg_id,
             pkg.title or "",
@@ -75,7 +75,7 @@ def list_packages(
 @app.command("get")
 def get_package(id: str = typer.Argument(help="OTA package UUID.")):
     api = _get_api()
-    pkg = api.get_ota_package_info_by_id_v1(ota_package_id=id)
+    pkg = api.get_ota_package_info_by_id(ota_package_id=id)
     typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
 
 
@@ -87,5 +87,5 @@ def delete_package(
     if not yes:
         typer.confirm(f"Delete OTA package {id}?", abort=True)
     api = _get_api()
-    api.delete_ota_package_v1(ota_package_id=id)
+    api.delete_ota_package(ota_package_id=id)
     typer.echo(f"Deleted {id}")
