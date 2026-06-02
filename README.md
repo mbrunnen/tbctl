@@ -7,6 +7,15 @@ CLI for ThingsBoard OTA package management.
 ```sh
 pipx install .
 tb --install-completion zsh
+exec zsh
+```
+
+## Update
+
+```sh
+pipx reinstall tb
+tb --install-completion zsh
+exec zsh
 ```
 
 ## Configuration
