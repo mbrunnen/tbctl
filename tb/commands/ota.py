@@ -36,6 +36,15 @@ def _get_api(profile: str):
     return OtaPackageControllerApi(ApiClient(configuration=configuration))
 
 
+def _handle_api_error(e):
+    from tb_client.exceptions import ApiException
+
+    if isinstance(e, ApiException):
+        typer.echo(f"API error {e.status}: {e.reason or e.body}", err=True)
+        raise typer.Exit(1)
+    raise e
+
+
 @app.command("list")
 def list_packages(
     ctx: typer.Context,
@@ -45,7 +54,10 @@ def list_packages(
     from rich.table import Table
 
     api = _get_api(ctx.obj["profile"])
-    result = api.get_ota_packages(page_size=page_size, page=0)
+    try:
+        result = api.get_ota_packages(page_size=page_size, page=0)
+    except Exception as e:
+        _handle_api_error(e)
 
     if not result.data:
         typer.echo("No OTA packages found.")
@@ -76,7 +88,10 @@ def list_packages(
 @app.command("get")
 def get_package(ctx: typer.Context, id: str = typer.Argument(help="OTA package UUID.")):
     api = _get_api(ctx.obj["profile"])
-    pkg = api.get_ota_package_info_by_id(ota_package_id=id)
+    try:
+        pkg = api.get_ota_package_info_by_id(ota_package_id=id)
+    except Exception as e:
+        _handle_api_error(e)
     typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
 
 
@@ -89,5 +104,8 @@ def delete_package(
     if not yes:
         typer.confirm(f"Delete OTA package {id}?", abort=True)
     api = _get_api(ctx.obj["profile"])
-    api.delete_ota_package(ota_package_id=id)
+    try:
+        api.delete_ota_package(ota_package_id=id)
+    except Exception as e:
+        _handle_api_error(e)
     typer.echo(f"Deleted {id}")
