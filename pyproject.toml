@@ -19,8 +19,16 @@ dependencies = [
 [project.scripts]
 tb = "tb.cli:main"
 
+[tool.hatch.build]
+ignore-vcs = true
+exclude = [
+    "tb_client/.openapi-generator",
+    "tb_client/docs",
+    "tb_client/test",
+]
+
 [tool.hatch.build.targets.wheel]
-packages = ["tb"]
+packages = ["tb", "tb_client"]
 
 [dependency-groups]
 dev = [
