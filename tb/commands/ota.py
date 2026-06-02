@@ -57,6 +57,7 @@ def list_packages(
     type: str = typer.Option(None, "--type", "-t", help="Filter by type: FIRMWARE or SOFTWARE."),
     sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
     sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     from rich.console import Console
     from rich.table import Table
@@ -89,7 +90,11 @@ def list_packages(
         _handle_api_error(e)
 
     if not result.data:
-        typer.echo("No OTA packages found.")
+        typer.echo("[]" if output_json else "No OTA packages found.")
+        return
+
+    if output_json:
+        typer.echo(json.dumps([pkg.to_dict() for pkg in result.data], indent=2, default=str))
         return
 
     table = Table(show_header=True, header_style="bold")
