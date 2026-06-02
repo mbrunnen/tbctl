@@ -50,13 +50,41 @@ def _handle_api_error(e):
 def list_packages(
     ctx: typer.Context,
     page_size: int = typer.Option(20, "--page-size", help="Packages per page."),
+    text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on title."),
+    device_profile_id: str = typer.Option(
+        None, "--device-profile", "-d", help="Filter by device profile UUID."
+    ),
+    type: str = typer.Option(None, "--type", "-t", help="Filter by type: FIRMWARE or SOFTWARE."),
+    sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
+    sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
 ):
     from rich.console import Console
     from rich.table import Table
 
+    if bool(device_profile_id) != bool(type):
+        typer.echo("--device-profile and --type must be used together.", err=True)
+        raise typer.Exit(1)
+
     api = _get_api(ctx.obj["profile"])
     try:
-        result = api.get_ota_packages(page_size=page_size, page=0)
+        if device_profile_id and type:
+            result = api.get_ota_packages1(
+                device_profile_id=device_profile_id,
+                type=type,
+                page_size=page_size,
+                page=0,
+                text_search=text_search,
+                sort_property=sort_property,
+                sort_order=sort_order,
+            )
+        else:
+            result = api.get_ota_packages(
+                page_size=page_size,
+                page=0,
+                text_search=text_search,
+                sort_property=sort_property,
+                sort_order=sort_order,
+            )
     except Exception as e:
         _handle_api_error(e)
 
