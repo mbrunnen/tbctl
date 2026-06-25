@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -85,3 +86,180 @@ def test_delete_abort():
 
     assert result.exit_code != 0
     mock_api.delete_ota_package.assert_not_called()
+
+
+# --- JSON output (regression: model_dump vs to_dict) ---
+
+
+def test_list_json():
+    mock_api = MagicMock()
+    pkg = _mock_package()
+    pkg.model_dump.return_value = {
+        "title": "Firmware 1.0",
+        "version": "1.0",
+        "type": "FIRMWARE",
+        "id": {"id": "abc-123"},
+    }
+    mock_api.get_ota_packages.return_value.data = [pkg]
+    mock_api.get_ota_packages.return_value.total_elements = 1
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 1
+    assert data[0]["version"] == "1.0"
+    assert data[0]["type"] == "FIRMWARE"
+    pkg.model_dump.assert_called_once_with(by_alias=True, exclude_none=True)
+
+
+def test_list_json_empty():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = []
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--json"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "[]"
+
+
+def test_list_json_multiple():
+    mock_api = MagicMock()
+    pkgs = [
+        _mock_package("id-1", "FW 1.0", "1.0", "FIRMWARE"),
+        _mock_package("id-2", "SW 2.0", "2.0", "SOFTWARE"),
+    ]
+    for pkg in pkgs:
+        pkg.model_dump.return_value = {
+            "title": pkg.title,
+            "version": pkg.version,
+            "type": pkg.type,
+        }
+    mock_api.get_ota_packages.return_value.data = pkgs
+    mock_api.get_ota_packages.return_value.total_elements = 2
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 2
+    assert data[1]["type"] == "SOFTWARE"
+
+
+# --- Exception handling (regression: ApiException caught) ---
+
+
+def test_list_api_exception():
+    from tb_client.exceptions import ApiException
+
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.side_effect = ApiException(status=401, reason="Unauthorized")
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list"])
+
+    assert result.exit_code != 0
+    assert "401" in result.output
+
+
+def test_get_api_exception():
+    from tb_client.exceptions import ApiException
+
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.side_effect = ApiException(status=404, reason="Not Found")
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "get", "no-such-id"])
+
+    assert result.exit_code != 0
+    assert "404" in result.output
+
+
+def test_delete_api_exception():
+    from tb_client.exceptions import ApiException
+
+    mock_api = MagicMock()
+    mock_api.delete_ota_package.side_effect = ApiException(status=403, reason="Forbidden")
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "delete", "abc-123", "--yes"])
+
+    assert result.exit_code != 0
+    assert "403" in result.output
+
+
+# --- Filter validation ---
+
+
+def test_list_device_profile_without_type():
+    mock_api = MagicMock()
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--device-profile", "dp-uuid"])
+
+    assert result.exit_code != 0
+    assert "--device-profile and --type must be used together" in result.output
+    mock_api.get_ota_packages.assert_not_called()
+
+
+def test_list_type_without_device_profile():
+    mock_api = MagicMock()
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--type", "FIRMWARE"])
+
+    assert result.exit_code != 0
+    mock_api.get_ota_packages.assert_not_called()
+
+
+def test_list_device_profile_and_type():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages1.return_value.data = [_mock_package()]
+    mock_api.get_ota_packages1.return_value.total_elements = 1
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(
+            app, ["ota", "list", "--device-profile", "dp-uuid", "--type", "FIRMWARE"]
+        )
+
+    assert result.exit_code == 0
+    mock_api.get_ota_packages1.assert_called_once_with(
+        device_profile_id="dp-uuid",
+        type="FIRMWARE",
+        page_size=20,
+        page=0,
+        text_search=None,
+        sort_property=None,
+        sort_order=None,
+    )
+    mock_api.get_ota_packages.assert_not_called()
+
+
+def test_list_search_filter():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [_mock_package(title="SpecialFW")]
+    mock_api.get_ota_packages.return_value.total_elements = 1
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--search", "Special"])
+
+    assert result.exit_code == 0
+    mock_api.get_ota_packages.assert_called_once_with(
+        page_size=20,
+        page=0,
+        text_search="Special",
+        sort_property=None,
+        sort_order=None,
+    )
+
+
+# --- Missing / incomplete configuration ---
+
+
+def test_list_no_config(config_dir):
+    result = runner.invoke(app, ["ota", "list"])
+    assert result.exit_code != 0
+    assert "not configured" in result.output
