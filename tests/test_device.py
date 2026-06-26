@@ -270,3 +270,27 @@ def test_update_profile_resolves():
     assert result.exit_code == 0
     sent = mock_api.save_device.call_args.kwargs["device"]
     assert str(sent.device_profile_id.id) == PROFILE_UUID
+
+
+def test_delete_with_yes():
+    from tb.cli import app
+
+    mock_api = MagicMock()
+
+    with patch("tb.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "delete", DEVICE_UUID, "--yes"])
+
+    assert result.exit_code == 0
+    mock_api.delete_device.assert_called_once_with(device_id=DEVICE_UUID)
+
+
+def test_delete_confirm_aborts():
+    from tb.cli import app
+
+    mock_api = MagicMock()
+
+    with patch("tb.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "delete", DEVICE_UUID], input="n\n")
+
+    assert result.exit_code != 0
+    mock_api.delete_device.assert_not_called()

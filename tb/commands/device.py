@@ -163,3 +163,21 @@ def update_device(
     except Exception as e:
         handle_api_error(e)
     typer.echo(f"Updated {device_id}")
+
+
+@app.command("delete")
+def delete_device(
+    ctx: typer.Context,
+    device: str = typer.Argument(help="Device UUID or name."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+):
+    cfg_profile = ctx.obj["profile"]
+    device_id = resolve_device_id(cfg_profile, device)
+    if not yes:
+        typer.confirm(f"Delete device {device_id}?", abort=True)
+    api = device_api(cfg_profile)
+    try:
+        api.delete_device(device_id=device_id)
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(f"Deleted {device_id}")
