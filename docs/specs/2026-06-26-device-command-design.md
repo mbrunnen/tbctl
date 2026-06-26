@@ -26,7 +26,7 @@ and delete of ThingsBoard devices, mirroring the conventions already used by
 `DeviceProfileControllerApi` provides:
 
 - `get_default_device_profile_info()` -> `DeviceProfileInfo`
-- `get_device_profile_infos(page_size, text_search)` -> `PageDataDeviceProfileInfo`
+- `get_device_profile_infos(page_size, page, text_search)` -> `PageDataDeviceProfileInfo`
 
 The `Device` model marks `deviceProfileId` as required, so `create` must always
 resolve a profile UUID before calling `save_device`.
