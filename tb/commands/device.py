@@ -5,7 +5,6 @@ import typer
 
 from tb.commands._client import (
     device_api,
-    device_profile_api,
     handle_api_error,
     owner_api,
     resolve_device_id,
@@ -33,6 +32,26 @@ def _raw_json(response):
 
         raise ApiException(http_resp=response)
     return json.loads(response.data)
+
+
+def _raw_get(api, resource_path, query=None):
+    """GET a path via the device client and return parsed JSON.
+
+    Used for device-profile lookups: the generated device-profile controller
+    cannot be imported (a circular import in its alarm-condition models), so we
+    reuse the importable device client's HTTP machinery instead.
+    """
+    ac = api.api_client
+    request = ac.param_serialize(
+        method="GET",
+        resource_path=resource_path,
+        query_params=query or [],
+        header_params={"Accept": "application/json"},
+        auth_settings=["API key form"],
+    )
+    response = ac.call_api(*request)
+    response.read()
+    return _raw_json(response)
 
 
 def _device_access_token(api, device_id):
@@ -134,23 +153,52 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
 
 
 def resolve_profile_id(profile: str, name: str) -> str:
-    api = device_profile_api(profile)
+    api = device_api(profile)
     try:
         if name == "default":
-            info = api.get_default_device_profile_info()
-            return str(info.id.id)
-        result = api.get_device_profile_infos(page_size=100, page=0, text_search=name)
+            return _raw_get(api, "/api/deviceProfileInfo/default")["id"]["id"]
+        page = _raw_get(
+            api,
+            "/api/deviceProfileInfos",
+            [("pageSize", 100), ("page", 0), ("textSearch", name)],
+        )
     except Exception as e:
         handle_api_error(e)
 
-    matches = [p for p in result.data if (p.name or "").lower() == name.lower()]
+    matches = [p for p in page.get("data", []) if (p.get("name") or "").lower() == name.lower()]
     if not matches:
         typer.echo(f"Device profile '{name}' not found.", err=True)
         raise typer.Exit(1)
     if len(matches) > 1:
         typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
         raise typer.Exit(1)
-    return str(matches[0].id.id)
+    return matches[0]["id"]["id"]
+
+
+def _save_device_raw(api, body):
+    """Save a device from a plain dict, bypassing the Device model.
+
+    The generated Device model both fails to import cleanly (circular import)
+    and cannot round-trip ``deviceData`` (undiscriminated ``oneOf``). Building a
+    plain dict and serialising it through the endpoint's own request builder
+    avoids the model entirely on both the request and response sides.
+    """
+    request = api._save_device_serialize(
+        device=body,
+        access_token=None,
+        entity_group_id=None,
+        entity_group_ids=None,
+        name_conflict_policy=None,
+        uniquify_separator=None,
+        uniquify_strategy=None,
+        _request_auth=None,
+        _content_type=None,
+        _headers=None,
+        _host_index=0,
+    )
+    response = api.api_client.call_api(*request)
+    response.read()
+    return _raw_json(response)
 
 
 @app.command("create")
@@ -160,22 +208,19 @@ def create_device(
     label: str = typer.Option(None, "--label", help="Display label."),
     profile: str = typer.Option("default", "--profile", help="Device profile name."),
 ):
-    from tb_client.models.device import Device
-    from tb_client.models.device_profile_id import DeviceProfileId
-
     cfg_profile = ctx.obj["profile"]
     profile_id = resolve_profile_id(cfg_profile, profile)
-    device = Device(
-        name=name,
-        label=label,
-        device_profile_id=DeviceProfileId(id=profile_id, entity_type="DEVICE_PROFILE"),
-    )
     api = device_api(cfg_profile)
+    body = {
+        "name": name,
+        "label": label,
+        "deviceProfileId": {"id": profile_id, "entityType": "DEVICE_PROFILE"},
+    }
     try:
-        result = api.save_device(device=device)
+        created = _save_device_raw(api, body)
     except Exception as e:
         handle_api_error(e)
-    typer.echo(f"Created {result.id.id}")
+    typer.echo(f"Created {created['id']['id']}")
 
 
 @app.command("update")
@@ -186,27 +231,27 @@ def update_device(
     label: str = typer.Option(None, "--label", help="New display label."),
     profile: str = typer.Option(None, "--profile", help="New device profile name."),
 ):
-    from tb_client.models.device_profile_id import DeviceProfileId
-
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)
     api = device_api(cfg_profile)
     try:
-        existing = api.get_device_by_id(device_id=device_id)
+        response = api.get_device_by_id_without_preload_content(device_id=device_id)
+        existing = _raw_json(response)
     except Exception as e:
         handle_api_error(e)
 
     if name is not None:
-        existing.name = name
+        existing["name"] = name
     if label is not None:
-        existing.label = label
+        existing["label"] = label
     if profile is not None:
-        existing.device_profile_id = DeviceProfileId(
-            id=resolve_profile_id(cfg_profile, profile), entity_type="DEVICE_PROFILE"
-        )
+        existing["deviceProfileId"] = {
+            "id": resolve_profile_id(cfg_profile, profile),
+            "entityType": "DEVICE_PROFILE",
+        }
 
     try:
-        api.save_device(device=existing)
+        _save_device_raw(api, existing)
     except Exception as e:
         handle_api_error(e)
     typer.echo(f"Updated {device_id}")

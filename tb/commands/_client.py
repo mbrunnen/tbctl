@@ -60,12 +60,6 @@ def device_api(profile: str):
     return DeviceControllerApi(_configuration(profile))
 
 
-def device_profile_api(profile: str):
-    from tb_client.api.device_profile_controller_api import DeviceProfileControllerApi
-
-    return DeviceProfileControllerApi(_configuration(profile))
-
-
 def owner_api(profile: str):
     from tb_client.api.owner_controller_api import OwnerControllerApi
 
