@@ -302,3 +302,27 @@ def test_delete_confirm_aborts():
 
     assert result.exit_code != 0
     mock_api.delete_device.assert_not_called()
+
+
+def test_assign_to_customer():
+    from tb.cli import app
+
+    mock_api = MagicMock()
+    customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
+
+    with patch("tb.commands.device.owner_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "assign", DEVICE_UUID, "--customer", customer])
+
+    assert result.exit_code == 0
+    assert customer in result.output
+    mock_api.change_owner_to_customer.assert_called_once_with(
+        owner_id=customer, entity_type="DEVICE", entity_id=DEVICE_UUID
+    )
+
+
+def test_assign_requires_customer():
+    from tb.cli import app
+
+    result = runner.invoke(app, ["device", "assign", DEVICE_UUID])
+
+    assert result.exit_code != 0

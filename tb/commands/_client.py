@@ -66,6 +66,12 @@ def device_profile_api(profile: str):
     return DeviceProfileControllerApi(_configuration(profile))
 
 
+def owner_api(profile: str):
+    from tb_client.api.owner_controller_api import OwnerControllerApi
+
+    return OwnerControllerApi(_configuration(profile))
+
+
 def parse_response(value):
     """Coerce a telemetry endpoint response into a list/dict.
 

@@ -46,6 +46,7 @@ tb device get <device>
 tb device create sensor-1 --profile default --label Lobby
 tb device update sensor-1 --label "Main hall" --profile thermostat
 tb device delete sensor-1 --yes
+tb device assign sensor-1 --customer <customer-uuid>
 
 tb telemetry keys <device>
 tb telemetry latest <device> --keys temperature,humidity

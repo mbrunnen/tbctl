@@ -7,6 +7,7 @@ from tb.commands._client import (
     device_api,
     device_profile_api,
     handle_api_error,
+    owner_api,
     resolve_device_id,
 )
 
@@ -193,3 +194,19 @@ def delete_device(
     except Exception as e:
         handle_api_error(e)
     typer.echo(f"Deleted {device_id}")
+
+
+@app.command("assign")
+def assign_device(
+    ctx: typer.Context,
+    device: str = typer.Argument(help="Device UUID or name."),
+    customer: str = typer.Option(..., "--customer", "-c", help="Customer UUID to own the device."),
+):
+    cfg_profile = ctx.obj["profile"]
+    device_id = resolve_device_id(cfg_profile, device)
+    api = owner_api(cfg_profile)
+    try:
+        api.change_owner_to_customer(owner_id=customer, entity_type="DEVICE", entity_id=device_id)
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(f"Assigned {device_id} to customer {customer}")
