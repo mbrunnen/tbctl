@@ -88,11 +88,15 @@ def test_list_customer():
         {"data": [_device_dict()], "totalElements": 1}
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with (
+        patch("tb.commands.device.device_api", return_value=mock_api),
+        patch("tb.commands.device._customer_name", return_value="Acme Corp"),
+    ):
         result = runner.invoke(app, ["device", "list", "--customer", customer])
 
     assert result.exit_code == 0
     assert "sensor-1" in result.output
+    assert "Acme Corp" in result.output
     mock_api.get_customer_devices_without_preload_content.assert_called_once_with(
         customer_id=customer, page_size=20, page=0, type=None, text_search=None
     )

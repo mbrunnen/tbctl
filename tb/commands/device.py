@@ -61,6 +61,15 @@ def _device_access_token(api, device_id):
         handle_api_error(e)
 
 
+def _customer_name(api, customer_id):
+    """Best-effort customer title for display; falls back to the id."""
+    try:
+        info = _raw_get(api, f"/api/customer/{customer_id}/shortInfo")
+        return info.get("title") or customer_id
+    except Exception:
+        return customer_id
+
+
 @app.command("list")
 def list_devices(
     ctx: typer.Context,
@@ -136,7 +145,10 @@ def list_devices(
         table.add_row(*row)
     console = Console()
     console.print(table)
-    console.print(f"Showing {len(devices)} of {page.get('totalElements', len(devices))} devices")
+    footer = f"Showing {len(devices)} of {page.get('totalElements', len(devices))} devices"
+    if customer:
+        footer += f" owned by '{_customer_name(api, customer)}'"
+    console.print(footer)
 
 
 @app.command("get")
