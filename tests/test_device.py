@@ -232,3 +232,41 @@ def test_create_profile_ambiguous():
 
     assert result.exit_code == 1
     assert "ambiguous" in result.output
+
+
+def test_update_label_only():
+    from tb.cli import app
+
+    existing = MagicMock()
+    existing.name = "sensor-1"
+    existing.label = "old"
+    mock_api = MagicMock()
+    mock_api.get_device_by_id.return_value = existing
+
+    with patch("tb.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--label", "new"])
+
+    assert result.exit_code == 0
+    sent = mock_api.save_device.call_args.kwargs["device"]
+    assert sent.label == "new"
+    assert sent.name == "sensor-1"
+
+
+def test_update_profile_resolves():
+    from tb.cli import app
+
+    existing = MagicMock()
+    mock_api = MagicMock()
+    mock_api.get_device_by_id.return_value = existing
+    profile_api = MagicMock()
+    profile_api.get_device_profile_infos.return_value.data = [_mock_profile_info(name="custom")]
+
+    with (
+        patch("tb.commands.device.device_api", return_value=mock_api),
+        patch("tb.commands.device.device_profile_api", return_value=profile_api),
+    ):
+        result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--profile", "custom"])
+
+    assert result.exit_code == 0
+    sent = mock_api.save_device.call_args.kwargs["device"]
+    assert str(sent.device_profile_id.id) == PROFILE_UUID

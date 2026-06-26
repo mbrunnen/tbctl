@@ -129,3 +129,37 @@ def create_device(
     except Exception as e:
         handle_api_error(e)
     typer.echo(f"Created {result.id.id}")
+
+
+@app.command("update")
+def update_device(
+    ctx: typer.Context,
+    device: str = typer.Argument(help="Device UUID or name."),
+    name: str = typer.Option(None, "--name", help="New device name."),
+    label: str = typer.Option(None, "--label", help="New display label."),
+    profile: str = typer.Option(None, "--profile", help="New device profile name."),
+):
+    from tb_client.models.device_profile_id import DeviceProfileId
+
+    cfg_profile = ctx.obj["profile"]
+    device_id = resolve_device_id(cfg_profile, device)
+    api = device_api(cfg_profile)
+    try:
+        existing = api.get_device_by_id(device_id=device_id)
+    except Exception as e:
+        handle_api_error(e)
+
+    if name is not None:
+        existing.name = name
+    if label is not None:
+        existing.label = label
+    if profile is not None:
+        existing.device_profile_id = DeviceProfileId(
+            id=resolve_profile_id(cfg_profile, profile), entity_type="DEVICE_PROFILE"
+        )
+
+    try:
+        api.save_device(device=existing)
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(f"Updated {device_id}")
