@@ -5,4 +5,14 @@ __pycache__/
 dist/
 .coverage
 htmlcov/
-tb_client/
+# Generated OpenAPI client (regenerate with ./generate.sh). The generated bulk
+# is ignored; the hand-maintained customisation layer is kept.
+tb_client/*
+!tb_client/__init__.py
+!tb_client/api_client.py
+!tb_client/api/
+tb_client/api/*
+!tb_client/api/__init__.py
+!tb_client/models/
+tb_client/models/*
+!tb_client/models/__init__.py
