@@ -25,8 +25,13 @@ def _raw_json(response):
 
     The ``Device`` model cannot deserialise ThingsBoard's ``deviceData``: its
     transport configuration is an undiscriminated ``oneOf`` that matches several
-    schemas at once. Reading the response as plain JSON sidesteps this.
+    schemas at once. Reading the response as plain JSON sidesteps this. The
+    no-preload client path does not raise on error status, so check it here.
     """
+    if response.status >= 400:
+        from tb_client.exceptions import ApiException
+
+        raise ApiException(http_resp=response)
     return json.loads(response.data)
 
 
@@ -70,10 +75,10 @@ def list_devices(
                 sort_property=sort_property,
                 sort_order=sort_order,
             )
+        page = _raw_json(response)
     except Exception as e:
         handle_api_error(e)
 
-    page = _raw_json(response)
     devices = page.get("data", [])
 
     if token:
@@ -122,9 +127,10 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
     api = device_api(cfg_profile)
     try:
         response = api.get_device_by_id_without_preload_content(device_id=device_id)
+        data = _raw_json(response)
     except Exception as e:
         handle_api_error(e)
-    typer.echo(json.dumps(_raw_json(response), indent=2))
+    typer.echo(json.dumps(data, indent=2))
 
 
 def resolve_profile_id(profile: str, name: str) -> str:

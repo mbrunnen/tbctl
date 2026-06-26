@@ -39,8 +39,9 @@ def _device_dict(device_id=DEVICE_UUID, name="sensor-1", dev_type="default", lab
     }
 
 
-def _raw_response(payload):
+def _raw_response(payload, status=200):
     resp = MagicMock()
+    resp.status = status
     resp.data = json.dumps(payload).encode()
     return resp
 
@@ -132,6 +133,21 @@ def test_list_with_token():
     assert result.exit_code == 0
     assert json.loads(result.output)[0]["accessToken"] == "TOK123"
     mock_api.get_device_credentials_by_device_id.assert_called_once_with(device_id=DEVICE_UUID)
+
+
+def test_list_api_error():
+    from tb.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"message": "forbidden"}, status=403
+    )
+
+    with patch("tb.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 1
+    assert "403" in result.output
 
 
 def test_get():
