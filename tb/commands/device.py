@@ -3,7 +3,12 @@ from datetime import datetime, timezone
 
 import typer
 
-from tb.commands._client import device_api, device_profile_api, handle_api_error, resolve_device_id
+from tb.commands._client import (
+    device_api,
+    device_profile_api,
+    handle_api_error,
+    resolve_device_id,
+)
 
 app = typer.Typer(no_args_is_help=True, help="Manage devices.")
 
@@ -12,6 +17,16 @@ def _fmt_ts(ms) -> str:
     if not ms:
         return "-"
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _raw_json(response):
+    """Parse a raw client response body, bypassing the generated models.
+
+    The ``Device`` model cannot deserialise ThingsBoard's ``deviceData``: its
+    transport configuration is an undiscriminated ``oneOf`` that matches several
+    schemas at once. Reading the response as plain JSON sidesteps this.
+    """
+    return json.loads(response.data)
 
 
 @app.command("list")
@@ -26,7 +41,7 @@ def list_devices(
 ):
     api = device_api(ctx.obj["profile"])
     try:
-        result = api.get_tenant_devices(
+        response = api.get_tenant_devices_without_preload_content(
             page_size=page_size,
             page=0,
             type=type,
@@ -37,18 +52,15 @@ def list_devices(
     except Exception as e:
         handle_api_error(e)
 
-    if not result.data:
+    page = _raw_json(response)
+    devices = page.get("data", [])
+
+    if not devices:
         typer.echo("[]" if output_json else "No devices found.")
         return
 
     if output_json:
-        typer.echo(
-            json.dumps(
-                [d.model_dump(by_alias=True, exclude_none=True) for d in result.data],
-                indent=2,
-                default=str,
-            )
-        )
+        typer.echo(json.dumps(devices, indent=2))
         return
 
     from rich.console import Console
@@ -60,18 +72,18 @@ def list_devices(
     table.add_column("Type")
     table.add_column("Label")
     table.add_column("Created (UTC)")
-    for d in result.data:
-        device_id = str(d.id.id) if d.id is not None else ""
+    for d in devices:
+        device_id = (d.get("id") or {}).get("id", "")
         table.add_row(
             device_id,
-            d.name or "",
-            d.type or "",
-            d.label or "",
-            _fmt_ts(getattr(d, "created_time", None)),
+            d.get("name") or "",
+            d.get("type") or "",
+            d.get("label") or "",
+            _fmt_ts(d.get("createdTime")),
         )
     console = Console()
     console.print(table)
-    console.print(f"Showing {len(result.data)} of {result.total_elements} devices")
+    console.print(f"Showing {len(devices)} of {page.get('totalElements', len(devices))} devices")
 
 
 @app.command("get")
@@ -80,10 +92,10 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
     device_id = resolve_device_id(cfg_profile, device)
     api = device_api(cfg_profile)
     try:
-        dev = api.get_device_by_id(device_id=device_id)
+        response = api.get_device_by_id_without_preload_content(device_id=device_id)
     except Exception as e:
         handle_api_error(e)
-    typer.echo(json.dumps(dev.to_dict(), indent=2, default=str))
+    typer.echo(json.dumps(_raw_json(response), indent=2))
 
 
 def resolve_profile_id(profile: str, name: str) -> str:

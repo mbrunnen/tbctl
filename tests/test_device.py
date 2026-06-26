@@ -29,31 +29,36 @@ def test_device_profile_api_builds_controller():
     mock_controller_class.assert_called_once_with(mock_config)
 
 
-def _mock_device(
-    device_id=DEVICE_UUID, name="sensor-1", dev_type="default", label="Lobby", created=0
-):
-    dev = MagicMock()
-    dev.id.id = device_id
-    dev.name = name
-    dev.type = dev_type
-    dev.label = label
-    dev.created_time = created
-    return dev
+def _device_dict(device_id=DEVICE_UUID, name="sensor-1", dev_type="default", label="Lobby"):
+    return {
+        "id": {"id": device_id, "entityType": "DEVICE"},
+        "name": name,
+        "type": dev_type,
+        "label": label,
+        "createdTime": 0,
+    }
+
+
+def _raw_response(payload):
+    resp = MagicMock()
+    resp.data = json.dumps(payload).encode()
+    return resp
 
 
 def test_list():
     from tb.cli import app
 
     mock_api = MagicMock()
-    mock_api.get_tenant_devices.return_value.data = [_mock_device()]
-    mock_api.get_tenant_devices.return_value.total_elements = 1
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
 
     with patch("tb.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 0
     assert "sensor-1" in result.output
-    mock_api.get_tenant_devices.assert_called_once_with(
+    mock_api.get_tenant_devices_without_preload_content.assert_called_once_with(
         page_size=20,
         page=0,
         type=None,
@@ -67,7 +72,9 @@ def test_list_empty():
     from tb.cli import app
 
     mock_api = MagicMock()
-    mock_api.get_tenant_devices.return_value.data = []
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [], "totalElements": 0}
+    )
 
     with patch("tb.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list"])
@@ -79,31 +86,32 @@ def test_list_empty():
 def test_list_json():
     from tb.cli import app
 
-    dev = _mock_device()
-    dev.model_dump.return_value = {"name": "sensor-1"}
     mock_api = MagicMock()
-    mock_api.get_tenant_devices.return_value.data = [dev]
-    mock_api.get_tenant_devices.return_value.total_elements = 1
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
 
     with patch("tb.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list", "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == [{"name": "sensor-1"}]
+    assert json.loads(result.output) == [_device_dict()]
 
 
 def test_get():
     from tb.cli import app
 
     mock_api = MagicMock()
-    mock_api.get_device_by_id.return_value.to_dict.return_value = {"name": "sensor-1"}
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
+        {"name": "sensor-1"}
+    )
 
     with patch("tb.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "get", DEVICE_UUID])
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {"name": "sensor-1"}
-    mock_api.get_device_by_id.assert_called_once_with(device_id=DEVICE_UUID)
+    mock_api.get_device_by_id_without_preload_content.assert_called_once_with(device_id=DEVICE_UUID)
 
 
 def _mock_profile_info(name="custom", profile_id=PROFILE_UUID):
