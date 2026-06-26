@@ -156,7 +156,7 @@ def test_create_default_profile():
     assert DEVICE_UUID in result.output
     sent = device_api_mock.save_device.call_args.kwargs["device"]
     assert sent.name == "sensor-1"
-    assert sent.id is None
+    assert mock_device_class.call_args.kwargs.get("id") is None
     assert str(sent.device_profile_id.id) == PROFILE_UUID
 
 
@@ -211,25 +211,7 @@ def test_create_profile_not_found():
     profile_api = MagicMock()
     profile_api.get_device_profile_infos.return_value.data = []
 
-    mock_device_class = MagicMock()
-    mock_profile_id_class = MagicMock()
-    mock_device_module = MagicMock()
-    mock_device_module.Device = mock_device_class
-    mock_profile_id_module = MagicMock()
-    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
-
-    with (
-        patch("tb.commands.device.device_profile_api", return_value=profile_api),
-        patch.dict(
-            sys.modules,
-            {
-                "tb_client": MagicMock(),
-                "tb_client.models": MagicMock(),
-                "tb_client.models.device": mock_device_module,
-                "tb_client.models.device_profile_id": mock_profile_id_module,
-            },
-        ),
-    ):
+    with patch("tb.commands.device.device_profile_api", return_value=profile_api):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
 
     assert result.exit_code == 1
@@ -245,25 +227,7 @@ def test_create_profile_ambiguous():
         _mock_profile_info(name="dup", profile_id=DEVICE_UUID),
     ]
 
-    mock_device_class = MagicMock()
-    mock_profile_id_class = MagicMock()
-    mock_device_module = MagicMock()
-    mock_device_module.Device = mock_device_class
-    mock_profile_id_module = MagicMock()
-    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
-
-    with (
-        patch("tb.commands.device.device_profile_api", return_value=profile_api),
-        patch.dict(
-            sys.modules,
-            {
-                "tb_client": MagicMock(),
-                "tb_client.models": MagicMock(),
-                "tb_client.models.device": mock_device_module,
-                "tb_client.models.device_profile_id": mock_profile_id_module,
-            },
-        ),
-    ):
+    with patch("tb.commands.device.device_profile_api", return_value=profile_api):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
 
     assert result.exit_code == 1
