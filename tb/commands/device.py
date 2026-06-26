@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import typer
 
-from tb.commands._client import device_api, handle_api_error
+from tb.commands._client import device_api, handle_api_error, resolve_device_id
 
 app = typer.Typer(no_args_is_help=True, help="Manage devices.")
 
@@ -72,3 +72,15 @@ def list_devices(
     console = Console()
     console.print(table)
     console.print(f"Showing {len(result.data)} of {result.total_elements} devices")
+
+
+@app.command("get")
+def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUID or name.")):
+    cfg_profile = ctx.obj["profile"]
+    device_id = resolve_device_id(cfg_profile, device)
+    api = device_api(cfg_profile)
+    try:
+        dev = api.get_device_by_id(device_id=device_id)
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(json.dumps(dev.to_dict(), indent=2, default=str))

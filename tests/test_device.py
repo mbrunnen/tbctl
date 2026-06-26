@@ -90,3 +90,17 @@ def test_list_json():
 
     assert result.exit_code == 0
     assert json.loads(result.output) == [{"name": "sensor-1"}]
+
+
+def test_get():
+    from tb.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id.return_value.to_dict.return_value = {"name": "sensor-1"}
+
+    with patch("tb.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "get", DEVICE_UUID])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"name": "sensor-1"}
+    mock_api.get_device_by_id.assert_called_once_with(device_id=DEVICE_UUID)
