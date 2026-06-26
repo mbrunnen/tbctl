@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import typer
 
-from tb.commands._client import device_api, handle_api_error, resolve_device_id
+from tb.commands._client import device_api, device_profile_api, handle_api_error, resolve_device_id
 
 app = typer.Typer(no_args_is_help=True, help="Manage devices.")
 
@@ -84,3 +84,48 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
     except Exception as e:
         handle_api_error(e)
     typer.echo(json.dumps(dev.to_dict(), indent=2, default=str))
+
+
+def resolve_profile_id(profile: str, name: str) -> str:
+    api = device_profile_api(profile)
+    try:
+        if name == "default":
+            info = api.get_default_device_profile_info()
+            return str(info.id.id)
+        result = api.get_device_profile_infos(page_size=100, text_search=name)
+    except Exception as e:
+        handle_api_error(e)
+
+    matches = [p for p in result.data if (p.name or "").lower() == name.lower()]
+    if not matches:
+        typer.echo(f"Device profile '{name}' not found.", err=True)
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
+        raise typer.Exit(1)
+    return str(matches[0].id.id)
+
+
+@app.command("create")
+def create_device(
+    ctx: typer.Context,
+    name: str = typer.Argument(help="Unique device name."),
+    label: str = typer.Option(None, "--label", help="Display label."),
+    profile: str = typer.Option("default", "--profile", help="Device profile name."),
+):
+    from tb_client.models.device import Device
+    from tb_client.models.device_profile_id import DeviceProfileId
+
+    cfg_profile = ctx.obj["profile"]
+    profile_id = resolve_profile_id(cfg_profile, profile)
+    device = Device(
+        name=name,
+        label=label,
+        device_profile_id=DeviceProfileId(id=profile_id, entity_type="DEVICE_PROFILE"),
+    )
+    api = device_api(cfg_profile)
+    try:
+        result = api.save_device(device=device)
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(f"Created {result.id.id}")

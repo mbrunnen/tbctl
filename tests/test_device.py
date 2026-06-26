@@ -104,3 +104,164 @@ def test_get():
     assert result.exit_code == 0
     assert json.loads(result.output) == {"name": "sensor-1"}
     mock_api.get_device_by_id.assert_called_once_with(device_id=DEVICE_UUID)
+
+
+def _mock_profile_info(name="custom", profile_id=PROFILE_UUID):
+    info = MagicMock()
+    info.name = name
+    info.id.id = profile_id
+    return info
+
+
+def test_create_default_profile():
+    from tb.cli import app
+
+    profile_api = MagicMock()
+    profile_api.get_default_device_profile_info.return_value.id.id = PROFILE_UUID
+    device_api_mock = MagicMock()
+    device_api_mock.save_device.return_value.id.id = DEVICE_UUID
+
+    mock_device_class = MagicMock()
+    mock_profile_id_class = MagicMock()
+    device_instance = MagicMock()
+    profile_id_instance = MagicMock()
+    profile_id_instance.id = PROFILE_UUID
+    mock_profile_id_class.return_value = profile_id_instance
+    device_instance.device_profile_id = profile_id_instance
+    device_instance.id = None
+    device_instance.name = "sensor-1"
+    mock_device_class.return_value = device_instance
+
+    mock_device_module = MagicMock()
+    mock_device_module.Device = mock_device_class
+    mock_profile_id_module = MagicMock()
+    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
+
+    with (
+        patch("tb.commands.device.device_profile_api", return_value=profile_api),
+        patch("tb.commands.device.device_api", return_value=device_api_mock),
+        patch.dict(
+            sys.modules,
+            {
+                "tb_client": MagicMock(),
+                "tb_client.models": MagicMock(),
+                "tb_client.models.device": mock_device_module,
+                "tb_client.models.device_profile_id": mock_profile_id_module,
+            },
+        ),
+    ):
+        result = runner.invoke(app, ["device", "create", "sensor-1"])
+
+    assert result.exit_code == 0
+    assert DEVICE_UUID in result.output
+    sent = device_api_mock.save_device.call_args.kwargs["device"]
+    assert sent.name == "sensor-1"
+    assert sent.id is None
+    assert str(sent.device_profile_id.id) == PROFILE_UUID
+
+
+def test_create_named_profile():
+    from tb.cli import app
+
+    profile_api = MagicMock()
+    profile_api.get_device_profile_infos.return_value.data = [_mock_profile_info(name="custom")]
+    device_api_mock = MagicMock()
+    device_api_mock.save_device.return_value.id.id = DEVICE_UUID
+
+    mock_device_class = MagicMock()
+    mock_profile_id_class = MagicMock()
+    device_instance = MagicMock()
+    profile_id_instance = MagicMock()
+    profile_id_instance.id = PROFILE_UUID
+    mock_profile_id_class.return_value = profile_id_instance
+    device_instance.device_profile_id = profile_id_instance
+    mock_device_class.return_value = device_instance
+
+    mock_device_module = MagicMock()
+    mock_device_module.Device = mock_device_class
+    mock_profile_id_module = MagicMock()
+    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
+
+    with (
+        patch("tb.commands.device.device_profile_api", return_value=profile_api),
+        patch("tb.commands.device.device_api", return_value=device_api_mock),
+        patch.dict(
+            sys.modules,
+            {
+                "tb_client": MagicMock(),
+                "tb_client.models": MagicMock(),
+                "tb_client.models.device": mock_device_module,
+                "tb_client.models.device_profile_id": mock_profile_id_module,
+            },
+        ),
+    ):
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "custom"])
+
+    assert result.exit_code == 0
+    sent = device_api_mock.save_device.call_args.kwargs["device"]
+    assert str(sent.device_profile_id.id) == PROFILE_UUID
+
+
+def test_create_profile_not_found():
+    from tb.cli import app
+
+    profile_api = MagicMock()
+    profile_api.get_device_profile_infos.return_value.data = []
+
+    mock_device_class = MagicMock()
+    mock_profile_id_class = MagicMock()
+    mock_device_module = MagicMock()
+    mock_device_module.Device = mock_device_class
+    mock_profile_id_module = MagicMock()
+    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
+
+    with (
+        patch("tb.commands.device.device_profile_api", return_value=profile_api),
+        patch.dict(
+            sys.modules,
+            {
+                "tb_client": MagicMock(),
+                "tb_client.models": MagicMock(),
+                "tb_client.models.device": mock_device_module,
+                "tb_client.models.device_profile_id": mock_profile_id_module,
+            },
+        ),
+    ):
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_create_profile_ambiguous():
+    from tb.cli import app
+
+    profile_api = MagicMock()
+    profile_api.get_device_profile_infos.return_value.data = [
+        _mock_profile_info(name="dup", profile_id=PROFILE_UUID),
+        _mock_profile_info(name="dup", profile_id=DEVICE_UUID),
+    ]
+
+    mock_device_class = MagicMock()
+    mock_profile_id_class = MagicMock()
+    mock_device_module = MagicMock()
+    mock_device_module.Device = mock_device_class
+    mock_profile_id_module = MagicMock()
+    mock_profile_id_module.DeviceProfileId = mock_profile_id_class
+
+    with (
+        patch("tb.commands.device.device_profile_api", return_value=profile_api),
+        patch.dict(
+            sys.modules,
+            {
+                "tb_client": MagicMock(),
+                "tb_client.models": MagicMock(),
+                "tb_client.models.device": mock_device_module,
+                "tb_client.models.device_profile_id": mock_profile_id_module,
+            },
+        ),
+    ):
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
+
+    assert result.exit_code == 1
+    assert "ambiguous" in result.output
