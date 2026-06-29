@@ -199,7 +199,7 @@ def _resolve_package_info(
     api = _get_api(cfg_profile)
     if package_id:
         try:
-            return api.get_ota_package_info_by_id(ota_package_id=package_id)
+            return api, api.get_ota_package_info_by_id(ota_package_id=package_id)
         except Exception as e:
             _handle_api_error(e)
     if device_profile:
@@ -210,14 +210,14 @@ def _resolve_package_info(
         )
         if version:
             candidates = _packages_for_profile(api, profile_id, pkg_type)
-            return _select_from_candidates(candidates, version, f"profile '{device_profile}'")
+            return api, _select_from_candidates(candidates, version, f"profile '{device_profile}'")
         try:
             profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
         except Exception as e:
             _handle_api_error(e)
         ota_id = _assigned_ota_id(profile, pkg_type, f"Profile '{device_profile}'")
         try:
-            return api.get_ota_package_info_by_id(ota_package_id=ota_id)
+            return api, api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
             _handle_api_error(e)
     if name:
@@ -236,7 +236,7 @@ def _resolve_package_info(
             for p in page.data
             if (p.title or "").lower() == name.lower() and (p.type or "") == pkg_type
         ]
-        return _select_from_candidates(candidates, version, f"name '{name}'")
+        return api, _select_from_candidates(candidates, version, f"name '{name}'")
     if device:
         device_id = resolve_device_id(cfg_profile, device)
         try:
@@ -246,9 +246,8 @@ def _resolve_package_info(
         profile_id = dev["deviceProfileId"]["id"]
         if version:
             candidates = _packages_for_profile(api, profile_id, pkg_type)
-            return _select_from_candidates(candidates, version, f"device '{device}'")
-        field = "firmwareId" if pkg_type == "FIRMWARE" else "softwareId"
-        ref = dev.get(field)
+            return api, _select_from_candidates(candidates, version, f"device '{device}'")
+        ref = dev.get("firmwareId" if pkg_type == "FIRMWARE" else "softwareId")
         if not ref:
             try:
                 profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
@@ -258,7 +257,7 @@ def _resolve_package_info(
         else:
             ota_id = ref["id"]
         try:
-            return api.get_ota_package_info_by_id(ota_package_id=ota_id)
+            return api, api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
             _handle_api_error(e)
     raise typer.Exit(1)
@@ -298,7 +297,7 @@ def download_package(
     _validate_selectors(package_id, device_profile, device, name, version, latest)
 
     cfg_profile = ctx.obj["profile"]
-    info = _resolve_package_info(
+    api, info = _resolve_package_info(
         cfg_profile,
         package_id=package_id,
         device_profile=device_profile,
@@ -308,7 +307,6 @@ def download_package(
         latest=latest,
         pkg_type=pkg_type,
     )
-    api = _get_api(cfg_profile)
     try:
         data = api.download_ota_package(ota_package_id=info.id.id)
     except Exception as e:
