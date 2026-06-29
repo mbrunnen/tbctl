@@ -32,10 +32,14 @@
 
 Behaviour-preserving extraction so `ota.py` can reuse `raw_get`/`resolve_profile_id` without depending on a sibling command module. Verified by the existing `test_device.py` suite.
 
+**Hard guardrail:** Touch ONLY `tb/commands/_client.py`, `tb/commands/device.py`, and `tests/test_device.py`. Do NOT modify, regenerate, or delete anything under `tb_client/` or `generated/`, and do NOT run `generate.sh` — the generated client is managed separately and is already working.
+
+**Why test_device.py changes:** `test_device.py` patches `tb.commands.device._raw_get` and `tb.commands.device.device_api` inside the four tests that exercise the *real* `resolve_profile_id`. Once `resolve_profile_id`, `raw_get`, and `raw_json` live in `_client.py`, `resolve_profile_id` calls `_client.device_api`/`_client.raw_get`, so those four tests must patch the `_client` namespace instead. The other patches (`device.device_api` for list/get/etc., and `device.resolve_profile_id` for create/update success) stay as-is because `device.py` still calls `device_api` directly and still exposes the imported `resolve_profile_id` name.
+
 **Files:**
 - Modify: `tb/commands/_client.py`
 - Modify: `tb/commands/device.py`
-- Test: `tests/test_device.py` (existing, must stay green)
+- Modify: `tests/test_device.py` (retarget 8 patch strings in 4 functions; see Step 2b)
 
 **Interfaces:**
 - Produces (in `tb.commands._client`):
@@ -110,6 +114,21 @@ def resolve_profile_id(profile: str, name: str) -> str:
 
 In `tb/commands/device.py`, extend the existing `from tb.commands._client import (...)` block to include `raw_get`, `raw_json`, `resolve_profile_id`. Then delete the local `_raw_json`, `_raw_get`, and `resolve_profile_id` definitions, and replace internal calls `_raw_json(` → `raw_json(` and `_raw_get(` → `raw_get(` throughout `device.py`.
 
+- [ ] **Step 2b: Retarget the affected patches in `tests/test_device.py`**
+
+Only inside these four functions — `test_resolve_profile_default`, `test_resolve_profile_named_exact_match`, `test_create_profile_not_found`, `test_create_profile_ambiguous` — change the two patch targets:
+
+```python
+# before
+patch("tb.commands.device.device_api", return_value=MagicMock()),
+patch("tb.commands.device._raw_get", return_value=...),
+# after
+patch("tb.commands._client.device_api", return_value=MagicMock()),
+patch("tb.commands._client.raw_get", return_value=...),
+```
+
+Leave every other `patch("tb.commands.device.device_api", ...)` and `patch("tb.commands.device.resolve_profile_id", ...)` in the file unchanged.
+
 - [ ] **Step 3: Run the device suite to verify no regression**
 
 Run: `uv run pytest tests/test_device.py -q`
@@ -123,7 +142,7 @@ Expected: 66 passed; ruff clean.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tb/commands/_client.py tb/commands/device.py
+git add tb/commands/_client.py tb/commands/device.py tests/test_device.py
 git commit -m "Extract raw-JSON device-client helpers into _client"
 ```
 
