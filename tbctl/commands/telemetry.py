@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import typer
 
-from tb.commands._client import (
+from tbctl.commands._client import (
     handle_api_error,
     parse_response,
     resolve_device_id,

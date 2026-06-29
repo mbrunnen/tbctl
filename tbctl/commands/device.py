@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import typer
 
-from tb.commands._client import (
+from tbctl.commands._client import (
     device_api,
     handle_api_error,
     owner_api,

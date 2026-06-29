@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tb"
+name = "tbctl"
 version = "0.1.0"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -18,13 +18,13 @@ dependencies = [
 ]
 
 [project.scripts]
-tb = "tb.cli:main"
+tbctl = "tbctl.cli:main"
 
 [tool.hatch.build]
 ignore-vcs = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["tb", "generated/tb_client"]
+packages = ["tbctl", "generated/tb_client"]
 
 [dependency-groups]
 dev = [
@@ -47,4 +47,4 @@ line-length = 100
 select = ["E", "F", "I"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tb_client"]
+known-first-party = ["tb_client", "tbctl"]

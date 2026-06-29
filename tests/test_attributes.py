@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from tb.cli import app
+from tbctl.cli import app
 
 runner = CliRunner()
 
@@ -17,8 +17,8 @@ ATTRS = (
 
 def _invoke(args, api):
     with (
-        patch("tb.commands.attributes.telemetry_api", return_value=api),
-        patch("tb.commands.attributes.resolve_device_id", return_value=DEVICE),
+        patch("tbctl.commands.attributes.telemetry_api", return_value=api),
+        patch("tbctl.commands.attributes.resolve_device_id", return_value=DEVICE),
     ):
         return runner.invoke(app, args)
 

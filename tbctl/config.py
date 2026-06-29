@@ -3,7 +3,7 @@ from pathlib import Path
 
 import tomli_w
 
-CONFIG_DIR = Path.home() / ".config" / "tb"
+CONFIG_DIR = Path.home() / ".config" / "tbctl"
 
 
 def _path(profile: str) -> Path:

@@ -27,14 +27,14 @@ def _raw_response(payload, status=200):
 
 
 def test_list():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict()], "totalElements": 1}
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 0
@@ -50,14 +50,14 @@ def test_list():
 
 
 def test_list_empty():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [], "totalElements": 0}
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 0
@@ -65,14 +65,14 @@ def test_list_empty():
 
 
 def test_list_json():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict()], "totalElements": 1}
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list", "--json"])
 
     assert result.exit_code == 0
@@ -80,7 +80,7 @@ def test_list_json():
 
 
 def test_list_customer():
-    from tb.cli import app
+    from tbctl.cli import app
 
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
     mock_api = MagicMock()
@@ -89,8 +89,8 @@ def test_list_customer():
     )
 
     with (
-        patch("tb.commands.device.device_api", return_value=mock_api),
-        patch("tb.commands.device._customer_name", return_value="Acme Corp"),
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device._customer_name", return_value="Acme Corp"),
     ):
         result = runner.invoke(app, ["device", "list", "--customer", customer])
 
@@ -103,7 +103,7 @@ def test_list_customer():
 
 
 def test_list_with_token():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
@@ -111,7 +111,7 @@ def test_list_with_token():
     )
     mock_api.get_device_credentials_by_device_id.return_value.credentials_id = "TOK123"
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list", "--token", "--json"])
 
     assert result.exit_code == 0
@@ -120,14 +120,14 @@ def test_list_with_token():
 
 
 def test_list_api_error():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"message": "forbidden"}, status=403
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 1
@@ -135,14 +135,14 @@ def test_list_api_error():
 
 
 def test_get():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
         {"name": "sensor-1"}
     )
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "get", DEVICE_UUID])
 
     assert result.exit_code == 0
@@ -151,13 +151,13 @@ def test_get():
 
 
 def test_create_default_profile():
-    from tb.cli import app
+    from tbctl.cli import app
 
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
         patch(
-            "tb.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}
+            "tbctl.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}
         ) as save_raw,
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1"])
@@ -171,12 +171,12 @@ def test_create_default_profile():
 
 
 def test_create_resolves_named_profile():
-    from tb.cli import app
+    from tbctl.cli import app
 
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device.resolve_profile_id", return_value=PROFILE_UUID) as resolve,
-        patch("tb.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}),
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID) as resolve,
+        patch("tbctl.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}),
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "custom"])
 
@@ -185,32 +185,32 @@ def test_create_resolves_named_profile():
 
 
 def test_resolve_profile_default():
-    from tb.commands.device import resolve_profile_id
+    from tbctl.commands.device import resolve_profile_id
 
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands._client.raw_get", return_value={"id": {"id": PROFILE_UUID}}),
+        patch("tbctl.commands._client.device_api", return_value=MagicMock()),
+        patch("tbctl.commands._client.raw_get", return_value={"id": {"id": PROFILE_UUID}}),
     ):
         assert resolve_profile_id("test", "default") == PROFILE_UUID
 
 
 def test_resolve_profile_named_exact_match():
-    from tb.commands.device import resolve_profile_id
+    from tbctl.commands.device import resolve_profile_id
 
     page = {"data": [{"id": {"id": PROFILE_UUID}, "name": "custom"}]}
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands._client.raw_get", return_value=page),
+        patch("tbctl.commands._client.device_api", return_value=MagicMock()),
+        patch("tbctl.commands._client.raw_get", return_value=page),
     ):
         assert resolve_profile_id("test", "custom") == PROFILE_UUID
 
 
 def test_create_profile_not_found():
-    from tb.cli import app
+    from tbctl.cli import app
 
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands._client.raw_get", return_value={"data": []}),
+        patch("tbctl.commands._client.device_api", return_value=MagicMock()),
+        patch("tbctl.commands._client.raw_get", return_value={"data": []}),
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
 
@@ -219,7 +219,7 @@ def test_create_profile_not_found():
 
 
 def test_create_profile_ambiguous():
-    from tb.cli import app
+    from tbctl.cli import app
 
     page = {
         "data": [
@@ -228,8 +228,8 @@ def test_create_profile_ambiguous():
         ]
     }
     with (
-        patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands._client.raw_get", return_value=page),
+        patch("tbctl.commands._client.device_api", return_value=MagicMock()),
+        patch("tbctl.commands._client.raw_get", return_value=page),
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
 
@@ -238,7 +238,7 @@ def test_create_profile_ambiguous():
 
 
 def test_update_label_only():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
@@ -246,8 +246,8 @@ def test_update_label_only():
     )
 
     with (
-        patch("tb.commands.device.device_api", return_value=mock_api),
-        patch("tb.commands.device._save_device_raw") as save_raw,
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device._save_device_raw") as save_raw,
     ):
         result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--label", "new"])
 
@@ -258,7 +258,7 @@ def test_update_label_only():
 
 
 def test_update_profile_resolves():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
@@ -266,9 +266,9 @@ def test_update_profile_resolves():
     )
 
     with (
-        patch("tb.commands.device.device_api", return_value=mock_api),
-        patch("tb.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
-        patch("tb.commands.device._save_device_raw") as save_raw,
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
+        patch("tbctl.commands.device._save_device_raw") as save_raw,
     ):
         result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--profile", "custom"])
 
@@ -278,11 +278,11 @@ def test_update_profile_resolves():
 
 
 def test_delete_with_yes():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "delete", DEVICE_UUID, "--yes"])
 
     assert result.exit_code == 0
@@ -290,11 +290,11 @@ def test_delete_with_yes():
 
 
 def test_delete_confirm_aborts():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
 
-    with patch("tb.commands.device.device_api", return_value=mock_api):
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "delete", DEVICE_UUID], input="n\n")
 
     assert result.exit_code != 0
@@ -302,12 +302,12 @@ def test_delete_confirm_aborts():
 
 
 def test_assign_to_customer():
-    from tb.cli import app
+    from tbctl.cli import app
 
     mock_api = MagicMock()
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
 
-    with patch("tb.commands.device.owner_api", return_value=mock_api):
+    with patch("tbctl.commands.device.owner_api", return_value=mock_api):
         result = runner.invoke(app, ["device", "assign", DEVICE_UUID, "--customer", customer])
 
     assert result.exit_code == 0
@@ -318,7 +318,7 @@ def test_assign_to_customer():
 
 
 def test_assign_requires_customer():
-    from tb.cli import app
+    from tbctl.cli import app
 
     result = runner.invoke(app, ["device", "assign", DEVICE_UUID])
 

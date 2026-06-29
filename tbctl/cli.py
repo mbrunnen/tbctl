@@ -1,6 +1,6 @@
 import typer
 
-from tb.commands import attributes, config_cmd, device, ota, telemetry
+from tbctl.commands import attributes, config_cmd, device, ota, telemetry
 
 app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_cmd.app, name="config")

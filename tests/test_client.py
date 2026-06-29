@@ -1,6 +1,6 @@
 import pytest
 
-from tb.commands._client import make_api_client, parse_response, resolve_device_id
+from tbctl.commands._client import make_api_client, parse_response, resolve_device_id
 
 
 def test_api_client_strips_uri_template():
@@ -40,7 +40,7 @@ def test_resolve_device_id_name_lookup(monkeypatch):
     found.id.id = "resolved-uuid"
     api = MagicMock()
     api.get_tenant_device.return_value = found
-    monkeypatch.setattr("tb.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
     api.get_tenant_device.assert_called_once_with(device_name="OX1-UQEUBW")
@@ -53,7 +53,7 @@ def test_resolve_device_id_not_found(monkeypatch):
 
     api = MagicMock()
     api.get_tenant_device.return_value = None
-    monkeypatch.setattr("tb.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     with pytest.raises(typer.Exit):
         resolve_device_id("default", "missing")
@@ -68,7 +68,7 @@ def test_resolve_device_id_403_hint(monkeypatch, capsys):
 
     api = MagicMock()
     api.get_tenant_device.side_effect = ApiException(status=403, reason="Forbidden")
-    monkeypatch.setattr("tb.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     with pytest.raises(typer.Exit):
         resolve_device_id("default", "OX1-UQEUBW")

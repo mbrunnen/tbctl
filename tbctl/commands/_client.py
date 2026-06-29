@@ -4,7 +4,7 @@ import re
 
 import typer
 
-import tb.config as cfg
+import tbctl.config as cfg
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
@@ -39,7 +39,7 @@ def _configuration(profile: str):
 
     conf = cfg.load(profile)
     if not conf.get("url") or not conf.get("token"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tb config set-url`.", err=True)
+        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config set-url`.", err=True)
         raise typer.Exit(1)
 
     configuration = Configuration(host=conf["url"].rstrip("/"))

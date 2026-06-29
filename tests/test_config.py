@@ -2,7 +2,7 @@ import tomllib
 
 from typer.testing import CliRunner
 
-from tb.cli import app
+from tbctl.cli import app
 
 runner = CliRunner()
 

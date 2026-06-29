@@ -3,8 +3,14 @@ from pathlib import Path
 
 import typer
 
-import tb.config as cfg
-from tb.commands._client import _UUID_RE, device_api, raw_get, resolve_device_id, resolve_profile_id
+import tbctl.config as cfg
+from tbctl.commands._client import (
+    _UUID_RE,
+    device_api,
+    raw_get,
+    resolve_device_id,
+    resolve_profile_id,
+)
 
 app = typer.Typer(no_args_is_help=True, help="Manage OTA packages.")
 
@@ -21,16 +27,16 @@ def _format_size(size_bytes) -> str:
 
 def _get_api(profile: str):
     try:
-        from tb.commands._client import make_api_client
         from tb_client.api.ota_package_controller_api import OtaPackageControllerApi
         from tb_client.configuration import Configuration
+        from tbctl.commands._client import make_api_client
     except ImportError:
         typer.echo("tb_client not found. Run ./generate.sh to generate the client.", err=True)
         raise typer.Exit(1)
 
     conf = cfg.load(profile)
     if not conf.get("url") or not conf.get("token"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tb config set-url`.", err=True)
+        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config set-url`.", err=True)
         raise typer.Exit(1)
 
     configuration = Configuration(host=conf["url"].rstrip("/"))
