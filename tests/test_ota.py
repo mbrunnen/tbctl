@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -540,7 +540,7 @@ def test_download_by_profile_name_resolves(tmp_path, monkeypatch):
         result = runner.invoke(app, ["ota", "download", "--device-profile", "sensor-v2"])
 
     assert result.exit_code == 0, result.output
-    rp.assert_called_once()
+    rp.assert_called_once_with(ANY, "sensor-v2")
 
 
 def test_download_by_profile_version(tmp_path, monkeypatch):
