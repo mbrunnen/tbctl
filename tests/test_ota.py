@@ -263,3 +263,124 @@ def test_list_no_config(config_dir):
     result = runner.invoke(app, ["ota", "list"])
     assert result.exit_code != 0
     assert "not configured" in result.output
+
+
+# --- download command ---
+
+
+def _mock_info(
+    pkg_id="abc-123", title="Firmware", version="1.0", pkg_type="FIRMWARE", file_name="fw_1.0.bin"
+):
+    info = MagicMock()
+    info.id.id = pkg_id
+    info.title = title
+    info.version = version
+    info.type = pkg_type
+    info.file_name = file_name
+    return info
+
+
+def test_download_by_id(tmp_path):
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_info()
+    mock_api.download_ota_package.return_value = b"BINARY"
+    out = tmp_path / "out.bin"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out)])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id="abc-123")
+    assert out.read_bytes() == b"BINARY"
+
+
+def test_download_default_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_info(file_name="fw_1.0.bin")
+    mock_api.download_ota_package.return_value = b"BINARY"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "abc-123"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "fw_1.0.bin").read_bytes() == b"BINARY"
+
+
+def test_download_fallback_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_info(file_name=None)
+    mock_api.download_ota_package.return_value = b"BINARY"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "abc-123"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "Firmware-1.0.bin").read_bytes() == b"BINARY"
+
+
+def test_download_refuses_overwrite(tmp_path):
+    out = tmp_path / "out.bin"
+    out.write_bytes(b"OLD")
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_info()
+    mock_api.download_ota_package.return_value = b"NEW"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out)])
+
+    assert result.exit_code != 0
+    assert "exists" in result.output
+    assert out.read_bytes() == b"OLD"
+
+
+def test_download_force_overwrite(tmp_path):
+    out = tmp_path / "out.bin"
+    out.write_bytes(b"OLD")
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_info()
+    mock_api.download_ota_package.return_value = b"NEW"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out), "--force"])
+
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes() == b"NEW"
+
+
+def test_download_no_selector():
+    with patch("tb.commands.ota._get_api", return_value=MagicMock()):
+        result = runner.invoke(app, ["ota", "download"])
+    assert result.exit_code != 0
+    assert "Provide exactly one" in result.output
+
+
+def test_download_multiple_selectors():
+    with patch("tb.commands.ota._get_api", return_value=MagicMock()):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "--name", "fw"])
+    assert result.exit_code != 0
+    assert "exactly one" in result.output
+
+
+def test_download_version_and_latest():
+    with patch("tb.commands.ota._get_api", return_value=MagicMock()):
+        result = runner.invoke(
+            app, ["ota", "download", "--name", "fw", "--version", "1.0", "--latest"]
+        )
+    assert result.exit_code != 0
+    assert "--version" in result.output and "--latest" in result.output
+
+
+def test_download_latest_without_name():
+    with patch("tb.commands.ota._get_api", return_value=MagicMock()):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "--latest"])
+    assert result.exit_code != 0
+    assert "--latest" in result.output
+
+
+def test_download_version_with_id():
+    with patch("tb.commands.ota._get_api", return_value=MagicMock()):
+        result = runner.invoke(app, ["ota", "download", "abc-123", "--version", "1.0"])
+    assert result.exit_code != 0
+    assert "--version" in result.output

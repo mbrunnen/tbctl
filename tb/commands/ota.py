@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import typer
 
@@ -133,6 +134,90 @@ def get_package(ctx: typer.Context, id: str = typer.Argument(help="OTA package U
     except Exception as e:
         _handle_api_error(e)
     typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
+
+
+def _validate_selectors(package_id, device_profile, device, name, version, latest):
+    selectors = [package_id, device_profile, device, name]
+    if sum(bool(s) for s in selectors) != 1:
+        typer.echo(
+            "Provide exactly one selector: a package id, --device-profile, --device, or --name.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if version and latest:
+        typer.echo("--version and --latest are mutually exclusive.", err=True)
+        raise typer.Exit(1)
+    if latest and not name:
+        typer.echo("--latest is only valid with --name.", err=True)
+        raise typer.Exit(1)
+    if version and package_id:
+        typer.echo("--version cannot be combined with a package id.", err=True)
+        raise typer.Exit(1)
+
+
+def _resolve_package_info(
+    cfg_profile, *, package_id, device_profile, device, name, version, latest, pkg_type
+):
+    api = _get_api(cfg_profile)
+    if package_id:
+        try:
+            return api.get_ota_package_info_by_id(ota_package_id=package_id)
+        except Exception as e:
+            _handle_api_error(e)
+    typer.echo("Selector not implemented yet.", err=True)
+    raise typer.Exit(1)
+
+
+def _write_package(info, data, output, force):
+    if output:
+        target = Path(output)
+    else:
+        target = Path(info.file_name or f"{info.title}-{info.version}.bin")
+    if target.exists() and not force:
+        typer.echo(f"{target} exists; pass --force to overwrite or set --output.", err=True)
+        raise typer.Exit(1)
+    target.write_bytes(data)
+    typer.echo(f"Wrote {target} ({_format_size(len(data))})")
+
+
+@app.command("download")
+def download_package(
+    ctx: typer.Context,
+    package_id: str = typer.Argument(None, help="OTA package UUID."),
+    device_profile: str = typer.Option(
+        None, "--device-profile", "-p", help="Resolve via device profile name or UUID."
+    ),
+    device: str = typer.Option(None, "--device", "-D", help="Resolve via device name or UUID."),
+    name: str = typer.Option(None, "--name", "-n", help="Resolve by OTA package title."),
+    version: str = typer.Option(None, "--version", "-v", help="Specific package version."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with --name)."),
+    type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
+    output: str = typer.Option(None, "--output", "-o", help="Output file path."),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing output."),
+):
+    pkg_type = type.upper()
+    if pkg_type not in ("FIRMWARE", "SOFTWARE"):
+        typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
+        raise typer.Exit(1)
+    _validate_selectors(package_id, device_profile, device, name, version, latest)
+
+    cfg_profile = ctx.obj["profile"]
+    info = _resolve_package_info(
+        cfg_profile,
+        package_id=package_id,
+        device_profile=device_profile,
+        device=device,
+        name=name,
+        version=version,
+        latest=latest,
+        pkg_type=pkg_type,
+    )
+    api = _get_api(cfg_profile)
+    try:
+        data = api.download_ota_package(ota_package_id=info.id.id)
+    except Exception as e:
+        _handle_api_error(e)
+    _write_package(info, data, output, force)
 
 
 @app.command("delete")
