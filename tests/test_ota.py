@@ -294,6 +294,24 @@ def test_download_by_id(tmp_path):
     assert out.read_bytes() == b"BINARY"
 
 
+def test_download_passes_string_id(tmp_path):
+    import uuid
+
+    uid = uuid.UUID("1332f070-59ee-11f1-841f-31b578843dc8")
+    info = _mock_info()
+    info.id.id = uid
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = info
+    mock_api.download_ota_package.return_value = b"BINARY"
+    out = tmp_path / "out.bin"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", str(uid), "-o", str(out)])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id=str(uid))
+
+
 def test_download_default_filename(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     mock_api = MagicMock()

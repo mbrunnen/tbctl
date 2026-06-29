@@ -308,7 +308,7 @@ def download_package(
         pkg_type=pkg_type,
     )
     try:
-        data = api.download_ota_package(ota_package_id=info.id.id)
+        data = api.download_ota_package(ota_package_id=str(info.id.id))
     except Exception as e:
         _handle_api_error(e)
     _write_package(info, data, output, force)
