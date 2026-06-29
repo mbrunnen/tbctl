@@ -163,7 +163,7 @@ def create_device(
     ctx: typer.Context,
     name: str = typer.Argument(help="Unique device name."),
     label: str = typer.Option(None, "--label", help="Display label."),
-    profile: str = typer.Option("default", "--profile", help="Device profile name."),
+    profile: str = typer.Option("default", "-p", "--profile", help="Device profile name."),
 ):
     cfg_profile = ctx.obj["profile"]
     profile_id = resolve_profile_id(cfg_profile, profile)
@@ -186,7 +186,7 @@ def update_device(
     device: str = typer.Argument(help="Device UUID or name."),
     name: str = typer.Option(None, "--name", help="New device name."),
     label: str = typer.Option(None, "--label", help="New display label."),
-    profile: str = typer.Option(None, "--profile", help="New device profile name."),
+    profile: str = typer.Option(None, "-p", "--profile", help="New device profile name."),
 ):
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)

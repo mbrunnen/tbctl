@@ -54,7 +54,7 @@ def list_packages(
     page_size: int = typer.Option(20, "--page-size", help="Packages per page."),
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on title."),
     device_profile_id: str = typer.Option(
-        None, "--device-profile", "-d", help="Filter by device profile UUID."
+        None, "--device-profile", "-p", help="Filter by device profile UUID."
     ),
     type: str = typer.Option(None, "--type", "-t", help="Filter by type: FIRMWARE or SOFTWARE."),
     sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
