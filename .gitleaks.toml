@@ -10,7 +10,7 @@ regex = '''tb_[A-Za-z0-9]{40,}'''
 keywords = ["tb_"]
 
 [allowlist]
-description = "Documentation example values in the vendored ThingsBoard openapi.json spec"
+description = "Documentation example values in the vendored ThingsBoard OpenAPI spec"
 regexes = [
   '''tb_5te51SkLRYpjGrujUGwqkjFvooWBlQpVe2An2Dr3w13wjfxDW''',
   '''h6YtZHHPOvBEXxLGSVCdiul2t1C4J4''',

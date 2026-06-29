@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`tb` is a CLI for ThingsBoard OTA package management. It uses a Python client generated from `openapi.json` and exposes `tb config` and `tb ota` subcommands.
+`tb` is a CLI for ThingsBoard OTA package management. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tb config` and `tb ota` subcommands.
 
-The client lives in `tb_client/`.
+The client lives in `generated/tb_client/`, built by `./generate.sh`.
 
 ## Commands
 
@@ -31,7 +31,7 @@ uv run ruff format --check tb/ tests/  # format check
 - `tb/config.py` - reads/writes `~/.config/tb/config.toml` (url + token)
 - `tb/commands/` - one module per subcommand group (`config_cmd.py`, `ota.py`, `telemetry.py`, `attributes.py`)
 - `tb/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`
-- `tb_client/` - Python client generated from `openapi.json`
+- `generated/tb_client/` - Python client generated from `openapi-4.3.0.1PE.json` by `./generate.sh` (gitignored; run it once before installing or testing)
 
 The generated client returns telemetry and attribute endpoints as a Python `repr` string (single-quoted, not valid JSON). `parse_response` coerces these via `json.loads` then `ast.literal_eval`; wrap every such response in it.
 
