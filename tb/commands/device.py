@@ -7,7 +7,10 @@ from tb.commands._client import (
     device_api,
     handle_api_error,
     owner_api,
+    raw_get,
+    raw_json,
     resolve_device_id,
+    resolve_profile_id,
 )
 
 app = typer.Typer(no_args_is_help=True, help="Manage devices.")
@@ -17,41 +20,6 @@ def _fmt_ts(ms) -> str:
     if not ms:
         return "-"
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _raw_json(response):
-    """Parse a raw client response body, bypassing the generated models.
-
-    The ``Device`` model cannot deserialise ThingsBoard's ``deviceData``: its
-    transport configuration is an undiscriminated ``oneOf`` that matches several
-    schemas at once. Reading the response as plain JSON sidesteps this. The
-    no-preload client path does not raise on error status, so check it here.
-    """
-    if response.status >= 400:
-        from tb_client.exceptions import ApiException
-
-        raise ApiException(http_resp=response)
-    return json.loads(response.data)
-
-
-def _raw_get(api, resource_path, query=None):
-    """GET a path via the device client and return parsed JSON.
-
-    Used for device-profile lookups: the generated device-profile controller
-    cannot be imported (a circular import in its alarm-condition models), so we
-    reuse the importable device client's HTTP machinery instead.
-    """
-    ac = api.api_client
-    request = ac.param_serialize(
-        method="GET",
-        resource_path=resource_path,
-        query_params=query or [],
-        header_params={"Accept": "application/json"},
-        auth_settings=["API key form"],
-    )
-    response = ac.call_api(*request)
-    response.read()
-    return _raw_json(response)
 
 
 def _device_access_token(api, device_id):
@@ -64,7 +32,7 @@ def _device_access_token(api, device_id):
 def _customer_name(api, customer_id):
     """Best-effort customer title for display; falls back to the id."""
     try:
-        info = _raw_get(api, f"/api/customer/{customer_id}/shortInfo")
+        info = raw_get(api, f"/api/customer/{customer_id}/shortInfo")
         return info.get("title") or customer_id
     except Exception:
         return customer_id
@@ -103,7 +71,7 @@ def list_devices(
                 sort_property=sort_property,
                 sort_order=sort_order,
             )
-        page = _raw_json(response)
+        page = raw_json(response)
     except Exception as e:
         handle_api_error(e)
 
@@ -158,33 +126,10 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
     api = device_api(cfg_profile)
     try:
         response = api.get_device_by_id_without_preload_content(device_id=device_id)
-        data = _raw_json(response)
+        data = raw_json(response)
     except Exception as e:
         handle_api_error(e)
     typer.echo(json.dumps(data, indent=2))
-
-
-def resolve_profile_id(profile: str, name: str) -> str:
-    api = device_api(profile)
-    try:
-        if name == "default":
-            return _raw_get(api, "/api/deviceProfileInfo/default")["id"]["id"]
-        page = _raw_get(
-            api,
-            "/api/deviceProfileInfos",
-            [("pageSize", 100), ("page", 0), ("textSearch", name)],
-        )
-    except Exception as e:
-        handle_api_error(e)
-
-    matches = [p for p in page.get("data", []) if (p.get("name") or "").lower() == name.lower()]
-    if not matches:
-        typer.echo(f"Device profile '{name}' not found.", err=True)
-        raise typer.Exit(1)
-    if len(matches) > 1:
-        typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
-        raise typer.Exit(1)
-    return matches[0]["id"]["id"]
 
 
 def _save_device_raw(api, body):
@@ -210,7 +155,7 @@ def _save_device_raw(api, body):
     )
     response = api.api_client.call_api(*request)
     response.read()
-    return _raw_json(response)
+    return raw_json(response)
 
 
 @app.command("create")
@@ -248,7 +193,7 @@ def update_device(
     api = device_api(cfg_profile)
     try:
         response = api.get_device_by_id_without_preload_content(device_id=device_id)
-        existing = _raw_json(response)
+        existing = raw_json(response)
     except Exception as e:
         handle_api_error(e)
 

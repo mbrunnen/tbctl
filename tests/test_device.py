@@ -189,7 +189,7 @@ def test_resolve_profile_default():
 
     with (
         patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device._raw_get", return_value={"id": {"id": PROFILE_UUID}}),
+        patch("tb.commands._client.raw_get", return_value={"id": {"id": PROFILE_UUID}}),
     ):
         assert resolve_profile_id("test", "default") == PROFILE_UUID
 
@@ -200,7 +200,7 @@ def test_resolve_profile_named_exact_match():
     page = {"data": [{"id": {"id": PROFILE_UUID}, "name": "custom"}]}
     with (
         patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device._raw_get", return_value=page),
+        patch("tb.commands._client.raw_get", return_value=page),
     ):
         assert resolve_profile_id("test", "custom") == PROFILE_UUID
 
@@ -210,7 +210,7 @@ def test_create_profile_not_found():
 
     with (
         patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device._raw_get", return_value={"data": []}),
+        patch("tb.commands._client.raw_get", return_value={"data": []}),
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
 
@@ -229,7 +229,7 @@ def test_create_profile_ambiguous():
     }
     with (
         patch("tb.commands.device.device_api", return_value=MagicMock()),
-        patch("tb.commands.device._raw_get", return_value=page),
+        patch("tb.commands._client.raw_get", return_value=page),
     ):
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
 

@@ -113,3 +113,61 @@ def resolve_device_id(profile: str, device: str) -> str:
         typer.echo(f"Device '{device}' not found.", err=True)
         raise typer.Exit(1)
     return str(found.id.id)
+
+
+def raw_json(response):
+    """Parse a raw client response body, bypassing the generated models.
+
+    The ``Device`` model cannot deserialise ThingsBoard's ``deviceData``: its
+    transport configuration is an undiscriminated ``oneOf`` that matches several
+    schemas at once. Reading the response as plain JSON sidesteps this. The
+    no-preload client path does not raise on error status, so check it here.
+    """
+    if response.status >= 400:
+        from tb_client.exceptions import ApiException
+
+        raise ApiException(http_resp=response)
+    return json.loads(response.data)
+
+
+def raw_get(api, resource_path, query=None):
+    """GET a path via the device client and return parsed JSON.
+
+    Used for device-profile lookups: the generated device-profile controller
+    cannot be imported (a circular import in its alarm-condition models), so we
+    reuse the importable device client's HTTP machinery instead.
+    """
+    ac = api.api_client
+    request = ac.param_serialize(
+        method="GET",
+        resource_path=resource_path,
+        query_params=query or [],
+        header_params={"Accept": "application/json"},
+        auth_settings=["API key form"],
+    )
+    response = ac.call_api(*request)
+    response.read()
+    return raw_json(response)
+
+
+def resolve_profile_id(profile: str, name: str) -> str:
+    api = device_api(profile)
+    try:
+        if name == "default":
+            return raw_get(api, "/api/deviceProfileInfo/default")["id"]["id"]
+        page = raw_get(
+            api,
+            "/api/deviceProfileInfos",
+            [("pageSize", 100), ("page", 0), ("textSearch", name)],
+        )
+    except Exception as e:
+        handle_api_error(e)
+
+    matches = [p for p in page.get("data", []) if (p.get("name") or "").lower() == name.lower()]
+    if not matches:
+        typer.echo(f"Device profile '{name}' not found.", err=True)
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
+        raise typer.Exit(1)
+    return matches[0]["id"]["id"]
