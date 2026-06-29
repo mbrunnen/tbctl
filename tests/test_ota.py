@@ -384,3 +384,82 @@ def test_download_version_with_id():
         result = runner.invoke(app, ["ota", "download", "abc-123", "--version", "1.0"])
     assert result.exit_code != 0
     assert "--version" in result.output
+
+
+def test_download_by_name_latest(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    old = _mock_info(pkg_id="old", version="1.0", file_name="fw_1.0.bin")
+    old.created_time = 100
+    new = _mock_info(pkg_id="new", version="2.0", file_name="fw_2.0.bin")
+    new.created_time = 200
+    extra = _mock_info(
+        pkg_id="extra", title="Firmware Extra", version="3.0", file_name="fw_3.0.bin"
+    )
+    extra.created_time = 300
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [old, new, extra]
+    mock_api.download_ota_package.return_value = b"NEW"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "Firmware"])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id="new")
+
+
+def test_download_by_name_version(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    old = _mock_info(pkg_id="old", version="1.0", file_name="fw_1.0.bin")
+    old.created_time = 100
+    new = _mock_info(pkg_id="new", version="2.0", file_name="fw_2.0.bin")
+    new.created_time = 200
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [old, new]
+    mock_api.download_ota_package.return_value = b"OLD"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--version", "1.0"])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id="old")
+
+
+def test_download_by_name_type_filter(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    fw = _mock_info(pkg_id="fw", pkg_type="FIRMWARE", file_name="fw.bin")
+    fw.created_time = 100
+    sw = _mock_info(pkg_id="sw", pkg_type="SOFTWARE", file_name="sw.bin")
+    sw.created_time = 200
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [fw, sw]
+    mock_api.download_ota_package.return_value = b"SW"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--type", "SOFTWARE"])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id="sw")
+
+
+def test_download_by_name_not_found():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = []
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "Nope"])
+
+    assert result.exit_code != 0
+    assert "Nope" in result.output
+
+
+def test_download_by_name_version_not_found():
+    info = _mock_info(version="1.0")
+    info.created_time = 100
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [info]
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--version", "9.9"])
+
+    assert result.exit_code != 0
+    assert "9.9" in result.output

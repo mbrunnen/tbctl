@@ -155,6 +155,18 @@ def _validate_selectors(package_id, device_profile, device, name, version, lates
         raise typer.Exit(1)
 
 
+def _select_from_candidates(candidates, version, label):
+    if version:
+        candidates = [c for c in candidates if c.version == version]
+        if not candidates:
+            typer.echo(f"No package matching {label} at version '{version}'.", err=True)
+            raise typer.Exit(1)
+    if not candidates:
+        typer.echo(f"No package matching {label}.", err=True)
+        raise typer.Exit(1)
+    return max(candidates, key=lambda c: c.created_time or 0)
+
+
 def _resolve_package_info(
     cfg_profile, *, package_id, device_profile, device, name, version, latest, pkg_type
 ):
@@ -164,6 +176,21 @@ def _resolve_package_info(
             return api.get_ota_package_info_by_id(ota_package_id=package_id)
         except Exception as e:
             _handle_api_error(e)
+    if name:
+        try:
+            page = api.get_ota_packages(
+                page_size=100,
+                page=0,
+                text_search=name,
+                sort_property=None,
+                sort_order=None,
+            )
+        except Exception as e:
+            _handle_api_error(e)
+        candidates = [
+            p for p in page.data if (p.title or "") == name and (p.type or "") == pkg_type
+        ]
+        return _select_from_candidates(candidates, version, f"name '{name}'")
     typer.echo("Selector not implemented yet.", err=True)
     raise typer.Exit(1)
 
