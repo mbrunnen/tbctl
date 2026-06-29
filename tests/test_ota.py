@@ -441,6 +441,21 @@ def test_download_by_name_type_filter(tmp_path, monkeypatch):
     mock_api.download_ota_package.assert_called_once_with(ota_package_id="sw")
 
 
+def test_download_by_name_case_insensitive(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    info = _mock_info(pkg_id="fw", title="Firmware", file_name="fw.bin")
+    info.created_time = 100
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [info]
+    mock_api.download_ota_package.return_value = b"FW"
+
+    with patch("tb.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "download", "--name", "firmware"])
+
+    assert result.exit_code == 0, result.output
+    mock_api.download_ota_package.assert_called_once_with(ota_package_id="fw")
+
+
 def test_download_by_name_not_found():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = []

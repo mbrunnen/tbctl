@@ -232,7 +232,9 @@ def _resolve_package_info(
         except Exception as e:
             _handle_api_error(e)
         candidates = [
-            p for p in page.data if (p.title or "") == name and (p.type or "") == pkg_type
+            p
+            for p in page.data
+            if (p.title or "").lower() == name.lower() and (p.type or "") == pkg_type
         ]
         return _select_from_candidates(candidates, version, f"name '{name}'")
     if device:
@@ -259,6 +261,7 @@ def _resolve_package_info(
             return api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
             _handle_api_error(e)
+    raise typer.Exit(1)
 
 
 def _write_package(info, data, output, force):
