@@ -131,7 +131,7 @@ def test_list_api_error():
         result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 1
-    assert "403" in result.output
+    assert "403" in result.stderr
 
 
 def test_get():
@@ -215,7 +215,7 @@ def test_create_profile_not_found():
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
 
     assert result.exit_code == 1
-    assert "not found" in result.output
+    assert "not found" in result.stderr
 
 
 def test_create_profile_ambiguous():
@@ -234,7 +234,7 @@ def test_create_profile_ambiguous():
         result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
 
     assert result.exit_code == 1
-    assert "ambiguous" in result.output
+    assert "ambiguous" in result.stderr
 
 
 def test_update_label_only():

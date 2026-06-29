@@ -162,7 +162,7 @@ def test_list_api_exception():
         result = runner.invoke(app, ["ota", "list"])
 
     assert result.exit_code != 0
-    assert "401" in result.output
+    assert "401" in result.stderr
 
 
 def test_get_api_exception():
@@ -175,7 +175,7 @@ def test_get_api_exception():
         result = runner.invoke(app, ["ota", "get", "no-such-id"])
 
     assert result.exit_code != 0
-    assert "404" in result.output
+    assert "404" in result.stderr
 
 
 def test_delete_api_exception():
@@ -188,7 +188,7 @@ def test_delete_api_exception():
         result = runner.invoke(app, ["ota", "delete", "abc-123", "--yes"])
 
     assert result.exit_code != 0
-    assert "403" in result.output
+    assert "403" in result.stderr
 
 
 # --- Filter validation ---
@@ -201,7 +201,7 @@ def test_list_device_profile_without_type():
         result = runner.invoke(app, ["ota", "list", "--device-profile", "dp-uuid"])
 
     assert result.exit_code != 0
-    assert "--device-profile and --type must be used together" in result.output
+    assert "--device-profile and --type must be used together" in result.stderr
     mock_api.get_ota_packages.assert_not_called()
 
 
@@ -262,7 +262,7 @@ def test_list_search_filter():
 def test_list_no_config(config_dir):
     result = runner.invoke(app, ["ota", "list"])
     assert result.exit_code != 0
-    assert "not configured" in result.output
+    assert "not configured" in result.stderr
 
 
 # --- download command ---
@@ -331,7 +331,7 @@ def test_download_refuses_overwrite(tmp_path):
         result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out)])
 
     assert result.exit_code != 0
-    assert "exists" in result.output
+    assert "exists" in result.stderr
     assert out.read_bytes() == b"OLD"
 
 
@@ -353,14 +353,14 @@ def test_download_no_selector():
     with patch("tb.commands.ota._get_api", return_value=MagicMock()):
         result = runner.invoke(app, ["ota", "download"])
     assert result.exit_code != 0
-    assert "Provide exactly one" in result.output
+    assert "Provide exactly one" in result.stderr
 
 
 def test_download_multiple_selectors():
     with patch("tb.commands.ota._get_api", return_value=MagicMock()):
         result = runner.invoke(app, ["ota", "download", "abc-123", "--name", "fw"])
     assert result.exit_code != 0
-    assert "exactly one" in result.output
+    assert "exactly one" in result.stderr
 
 
 def test_download_version_and_latest():
@@ -369,21 +369,21 @@ def test_download_version_and_latest():
             app, ["ota", "download", "--name", "fw", "--version", "1.0", "--latest"]
         )
     assert result.exit_code != 0
-    assert "--version" in result.output and "--latest" in result.output
+    assert "--version" in result.stderr and "--latest" in result.stderr
 
 
 def test_download_latest_without_name():
     with patch("tb.commands.ota._get_api", return_value=MagicMock()):
         result = runner.invoke(app, ["ota", "download", "abc-123", "--latest"])
     assert result.exit_code != 0
-    assert "--latest" in result.output
+    assert "--latest" in result.stderr
 
 
 def test_download_version_with_id():
     with patch("tb.commands.ota._get_api", return_value=MagicMock()):
         result = runner.invoke(app, ["ota", "download", "abc-123", "--version", "1.0"])
     assert result.exit_code != 0
-    assert "--version" in result.output
+    assert "--version" in result.stderr
 
 
 def test_download_by_name_latest(tmp_path, monkeypatch):
@@ -464,7 +464,7 @@ def test_download_by_name_not_found():
         result = runner.invoke(app, ["ota", "download", "--name", "Nope"])
 
     assert result.exit_code != 0
-    assert "Nope" in result.output
+    assert "Nope" in result.stderr
 
 
 def test_download_by_name_version_not_found():
@@ -477,7 +477,7 @@ def test_download_by_name_version_not_found():
         result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--version", "9.9"])
 
     assert result.exit_code != 0
-    assert "9.9" in result.output
+    assert "9.9" in result.stderr
 
 
 PROFILE_UUID = "11111111-1111-1111-1111-111111111111"
@@ -585,7 +585,7 @@ def test_download_by_profile_no_assignment(tmp_path, monkeypatch):
         result = runner.invoke(app, ["ota", "download", "--device-profile", PROFILE_UUID])
 
     assert result.exit_code != 0
-    assert "no FIRMWARE" in result.output
+    assert "no FIRMWARE" in result.stderr
 
 
 DEVICE_UUID = "22222222-2222-2222-2222-222222222222"
@@ -693,4 +693,4 @@ def test_download_by_device_no_assignment(tmp_path, monkeypatch):
         result = runner.invoke(app, ["ota", "download", "--device", "thermostat-01"])
 
     assert result.exit_code != 0
-    assert "no FIRMWARE" in result.output
+    assert "no FIRMWARE" in result.stderr
