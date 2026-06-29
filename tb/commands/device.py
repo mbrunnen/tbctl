@@ -45,7 +45,7 @@ def list_devices(
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on name."),
     type: str = typer.Option(None, "--type", "-t", help="Filter by device profile name."),
     customer: str = typer.Option(
-        None, "--customer", "-c", help="Only devices owned by this customer UUID."
+        None, "--customer", "-C", help="Only devices owned by this customer UUID."
     ),
     token: bool = typer.Option(False, "--token", help="Include each device's access token."),
     sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
@@ -236,7 +236,7 @@ def delete_device(
 def assign_device(
     ctx: typer.Context,
     device: str = typer.Argument(help="Device UUID or name."),
-    customer: str = typer.Option(..., "--customer", "-c", help="Customer UUID to own the device."),
+    customer: str = typer.Option(..., "--customer", "-C", help="Customer UUID to own the device."),
 ):
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)
