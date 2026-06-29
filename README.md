@@ -39,6 +39,15 @@ tb ota list --json
 tb ota get <uuid>
 tb ota delete <uuid>
 
+tb ota download <uuid>                                   # by package id
+tb ota download --device-profile sensor-v2               # profile's assigned firmware
+tb ota download --device-profile sensor-v2 --version 1.4.0
+tb ota download --device thermostat-01                   # device's firmware (falls back to its profile)
+tb ota download --device thermostat-01 --version 1.4.0
+tb ota download --name app-fw --latest                   # newest package with this title
+tb ota download --name app-fw --version 1.4.0 --type SOFTWARE
+tb ota download --name app-fw -o ./out.bin --force       # custom path, overwrite if present
+
 tb device list
 tb device list --search sensor --type default --sort-by createdTime --sort-order DESC
 tb device list --customer <customer-uuid> --token   # devices of a customer, with access tokens
@@ -61,6 +70,14 @@ tb attributes get <device> --scope SERVER_SCOPE --keys fwVersion
 
 `<device>` accepts a device UUID or a device name. Name resolution needs an API
 token with tenant device-read permission; otherwise pass the UUID directly.
+
+`tb ota download` takes exactly one selector (a package id, `--device-profile`,
+`--device`, or `--name`). For a profile or device, the assigned package is used
+unless `--version` is given; for `--name`, the newest version is used unless
+`--version` is given. `--type` defaults to `FIRMWARE` (`--type SOFTWARE` for
+software). Without `-o/--output` the file is saved under the package's own file
+name in the current directory, and an existing file is only overwritten with
+`--force`.
 
 ## Development
 
