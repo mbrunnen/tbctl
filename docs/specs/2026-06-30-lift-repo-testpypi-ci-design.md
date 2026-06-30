@@ -29,39 +29,29 @@ Modernise the repository's release and developer-setup tooling:
 
 ### 2. CI fix — `.github/workflows/ci.yml`
 
-- The real breakage: the `lint-and-test` job lints and format-checks `tb/`,
-  which no longer exists after the `tb → tbctl` rename. Change both commands to
-  target `tbctl/ tests/`.
-- Extend the workflow trigger to also fire on version tags so a tag run can both
-  test and publish:
+The real breakage: the `lint-and-test` job lints and format-checks `tb/`, which
+no longer exists after the `tb → tbctl` rename. Change both commands to target
+`tbctl/ tests/`. No other change to `ci.yml`; its trigger and jobs stay as they
+are.
 
-  ```yaml
-  on:
-    push:
-      branches: [main]
-      tags: ['v*']
-    pull_request:
-  ```
+### 3. TestPyPI publishing — dedicated `publish.yml`
 
-### 3. TestPyPI publishing — build once, then publish
+A separate, self-contained workflow file `.github/workflows/publish.yml`,
+triggered only by `v*` tag pushes. Keeping it separate from `ci.yml` avoids
+cross-workflow artifact passing, so this workflow builds the distribution
+itself.
 
-Follow the PyPA-standard split: build artifacts in the test job, publish them in
-a separate gated job.
-
-- **`lint-and-test`** job: after `uv run pytest` passes, run `uv build` and
-  upload the resulting `dist/` directory as a workflow artifact. The job already
-  installs Java + openapi-generator and runs `./generate.sh`, which the build
-  needs (the generated client must be present on disk to be bundled).
+- **Trigger**: `on: { push: { tags: ['v*'] } }`.
 - **`publish-testpypi`** job:
-  - `needs: lint-and-test`
-  - runs only on tag pushes: `if: startsWith(github.ref, 'refs/tags/v')`
   - `permissions: { id-token: write }`
-  - downloads the `dist/` artifact
+  - checks out, sets up uv (Python 3.11) and Java 17, installs
+    openapi-generator, runs `./generate.sh` (the generated client must be on
+    disk to be bundled), then `uv build`.
   - calls `pypa/gh-action-pypi-publish` with
     `repository-url: https://test.pypi.org/legacy/` (OIDC Trusted Publishing,
     no `password`).
 
-The `secret-scan` job is unchanged.
+`ci.yml`'s `secret-scan` and `lint-and-test` jobs are unaffected.
 
 ### 4. `.envrc` (direnv)
 
@@ -81,7 +71,7 @@ direnv load.
 ## Manual setup required (one-time, by the maintainer)
 
 - On TestPyPI, register a **pending publisher** for project `tbctl`: owner/repo,
-  workflow filename `ci.yml`, environment (if used) matching the job.
+  workflow filename `publish.yml`, environment (if used) matching the job.
 - Install `direnv` locally and run `direnv allow` after the `.envrc` lands.
 - Bump `version` in `pyproject.toml` before each tag — TestPyPI rejects
   re-uploads of an existing version.
