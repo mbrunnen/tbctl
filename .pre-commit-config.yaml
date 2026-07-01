@@ -9,3 +9,11 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  - repo: local
+    hooks:
+      - id: readme-drift
+        name: README command drift-check
+        entry: uv run python -m pytest tests/test_readme.py -q
+        language: system
+        pass_filenames: false
+        files: '(README\.md|tbctl/.*\.py|tests/(readme_check|test_readme)\.py)$'
