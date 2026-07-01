@@ -9,7 +9,7 @@ pipx install \
   --index-url https://test.pypi.org/simple/ \
   --pip-args="--extra-index-url https://pypi.org/simple/" \
   tbctl
-tbctl --install-completion zsh
+tbctl --install-completion
 exec zsh
 ```
 
@@ -20,7 +20,7 @@ dependencies from PyPI.
 
 ```sh
 pipx reinstall tbctl
-tbctl --install-completion zsh
+tbctl --install-completion
 exec zsh
 ```
 
