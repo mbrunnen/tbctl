@@ -17,6 +17,11 @@ app = typer.Typer(no_args_is_help=True, help="Read device time-series telemetry.
 _REL_RE = re.compile(r"^(\d+)\s*([smhdw])$", re.IGNORECASE)
 _REL_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 
+# ThingsBoard applies a server-side default of 100 points when no limit is sent.
+# A raw series without --limit is exhausted by paging on the timestamp cursor;
+# the aggregation path stays a single request capped at one page.
+_PAGE_SIZE = 1_000
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
@@ -143,6 +148,37 @@ def latest(
     Console().print(table)
 
 
+def _fetch_series(api, device_id, key, start_ms, end_ms, order):
+    """Fetch every point for one key in the window by paging on the timestamp cursor.
+
+    ThingsBoard's ts_kv key is (entity, key, ts), so timestamps are unique per key:
+    advancing the cursor past the last returned point loses nothing and repeats nothing.
+    """
+    points = []
+    cursor = start_ms
+    while True:
+        page = parse_response(
+            api.get_timeseries(
+                "DEVICE",
+                device_id,
+                cursor,
+                end_ms,
+                {},
+                keys=key,
+                limit=str(_PAGE_SIZE),
+                order_by="ASC",
+            )
+        )
+        batch = page.get(key) or []
+        points.extend(batch)
+        if len(batch) < _PAGE_SIZE:
+            break
+        cursor = batch[-1]["ts"] + 1
+    if order.upper() == "DESC":
+        points.reverse()
+    return points
+
+
 @app.command("history")
 def history(
     ctx: typer.Context,
@@ -153,7 +189,9 @@ def history(
     ),
     end: str = typer.Option(None, "--end", help="End time: epoch ms or ISO date (default: now)."),
     last: str = typer.Option(None, "--last", help="Window ending now, e.g. 7d, 24h, 30m."),
-    limit: int = typer.Option(1000, "--limit", help="Max data points per key."),
+    limit: int = typer.Option(
+        None, "--limit", help="Max data points per key (default: fetch the full window)."
+    ),
     order: str = typer.Option("ASC", "--order", help="ASC or DESC."),
     agg: str = typer.Option(None, "--agg", help="Aggregation: MIN, MAX, AVG, SUM, COUNT, NONE."),
     interval: int = typer.Option(None, "--interval", help="Aggregation interval in ms."),
@@ -177,21 +215,36 @@ def history(
 
     profile = ctx.obj["profile"]
     device_id = resolve_device_id(profile, device)
+    api = telemetry_api(profile)
     try:
-        result = parse_response(
-            telemetry_api(profile).get_timeseries(
-                "DEVICE",
-                device_id,
-                start_ms,
-                end_ms,
-                {},
-                keys=keys,
-                limit=str(limit),
-                agg=agg,
-                interval=interval,
-                order_by=order,
+        if limit is None and not agg:
+            result = {}
+            for key in (k.strip() for k in keys.split(",") if k.strip()):
+                points = _fetch_series(api, device_id, key, start_ms, end_ms, order)
+                if points:
+                    result[key] = points
+        else:
+            effective_limit = limit if limit is not None else _PAGE_SIZE
+            result = parse_response(
+                api.get_timeseries(
+                    "DEVICE",
+                    device_id,
+                    start_ms,
+                    end_ms,
+                    {},
+                    keys=keys,
+                    limit=str(effective_limit),
+                    agg=agg,
+                    interval=interval,
+                    order_by=order,
+                )
             )
-        )
+            if any(len(result[key] or []) >= effective_limit for key in result):
+                typer.echo(
+                    f"Reached the limit of {effective_limit} points per key; "
+                    "results may be truncated. Increase --limit to fetch more.",
+                    err=True,
+                )
     except Exception as e:
         handle_api_error(e)
 
