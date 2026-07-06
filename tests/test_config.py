@@ -2,9 +2,27 @@ import tomllib
 
 from typer.testing import CliRunner
 
-from tbctl.cli import app
+import tbctl.config as cfg
+from tbctl.cli import app, complete_profile
 
 runner = CliRunner()
+
+
+def test_list_profiles(config_dir):
+    runner.invoke(app, ["-c", "PROD", "config", "set-url", "https://prod.example.com"])
+    runner.invoke(app, ["-c", "dev", "config", "set-url", "https://dev.example.com"])
+    assert cfg.list_profiles() == ["PROD", "dev"]
+
+
+def test_list_profiles_empty(config_dir):
+    assert cfg.list_profiles() == []
+
+
+def test_complete_profile(config_dir):
+    runner.invoke(app, ["-c", "PROD", "config", "set-url", "https://prod.example.com"])
+    runner.invoke(app, ["-c", "dev", "config", "set-url", "https://dev.example.com"])
+    assert complete_profile("") == ["PROD", "dev"]
+    assert complete_profile("de") == ["dev"]
 
 
 def test_set_url(config_dir):

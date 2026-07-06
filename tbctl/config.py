@@ -10,6 +10,12 @@ def _path(profile: str) -> Path:
     return CONFIG_DIR / f"{profile}.toml"
 
 
+def list_profiles() -> list[str]:
+    if not CONFIG_DIR.exists():
+        return []
+    return sorted(p.stem for p in CONFIG_DIR.glob("*.toml"))
+
+
 def load(profile: str = "default") -> dict:
     path = _path(profile)
     if not path.exists():
