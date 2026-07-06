@@ -26,6 +26,15 @@ exec zsh
 
 ## Configuration
 
+The quickest way to get started is the interactive wizard, which prompts for the
+URL and token and verifies them against the server before saving:
+
+```sh
+tbctl config init
+```
+
+The individual commands are also available:
+
 ```sh
 tbctl config set-url https://thingsboard.example.com
 tbctl config set-token <api-token>

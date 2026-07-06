@@ -1,6 +1,11 @@
 import pytest
 
-from tbctl.commands._client import make_api_client, parse_response, resolve_device_id
+from tbctl.commands._client import (
+    check_connection,
+    make_api_client,
+    parse_response,
+    resolve_device_id,
+)
 
 
 def test_api_client_strips_uri_template():
@@ -57,6 +62,28 @@ def test_resolve_device_id_not_found(monkeypatch):
 
     with pytest.raises(typer.Exit):
         resolve_device_id("default", "missing")
+
+
+def test_check_connection_success(monkeypatch):
+    monkeypatch.setattr(
+        "tbctl.commands._client.raw_get",
+        lambda api, path: {"email": "me@example.com"},
+    )
+    ok, message = check_connection("https://tb.example", "tok")
+    assert ok is True
+    assert message == "me@example.com"
+
+
+def test_check_connection_failure(monkeypatch):
+    from tb_client.exceptions import ApiException
+
+    def _raise(api, path):
+        raise ApiException(status=401, reason="Unauthorized")
+
+    monkeypatch.setattr("tbctl.commands._client.raw_get", _raise)
+    ok, message = check_connection("https://tb.example", "bad")
+    assert ok is False
+    assert "401" in message
 
 
 def test_resolve_device_id_403_hint(monkeypatch, capsys):

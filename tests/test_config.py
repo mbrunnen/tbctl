@@ -69,3 +69,72 @@ def test_show_profile_isolation(config_dir):
     result = runner.invoke(app, ["config", "show"])
     assert result.exit_code == 0
     assert "prod.example.com" not in result.output
+
+
+def _ok(monkeypatch, email="me@example.com"):
+    monkeypatch.setattr(
+        "tbctl.commands.config_cmd.check_connection", lambda url, token: (True, email)
+    )
+
+
+def test_init_writes_config(config_dir, monkeypatch):
+    _ok(monkeypatch)
+    result = runner.invoke(app, ["config", "init"], input="https://example.com\nsecret-token\n")
+    assert result.exit_code == 0
+    with open(config_dir / "default.toml", "rb") as f:
+        data = tomllib.load(f)
+    assert data["url"] == "https://example.com"
+    assert data["token"] == "secret-token"
+    assert "Connection OK" in result.output
+    assert "me@example.com" in result.output
+
+
+def test_init_hides_token(config_dir, monkeypatch):
+    _ok(monkeypatch)
+    result = runner.invoke(app, ["config", "init"], input="https://example.com\nsecret-token\n")
+    assert result.exit_code == 0
+    assert "secret-token" not in result.output
+
+
+def test_init_keeps_existing_token_on_empty(config_dir, monkeypatch):
+    _ok(monkeypatch)
+    runner.invoke(app, ["config", "set-url", "https://old.example.com"])
+    runner.invoke(app, ["config", "set-token", "old-token"])
+    result = runner.invoke(app, ["config", "init"], input="https://new.example.com\n\n")
+    assert result.exit_code == 0
+    with open(config_dir / "default.toml", "rb") as f:
+        data = tomllib.load(f)
+    assert data["url"] == "https://new.example.com"
+    assert data["token"] == "old-token"
+
+
+def test_init_url_default_prefill(config_dir, monkeypatch):
+    _ok(monkeypatch)
+    runner.invoke(app, ["config", "set-url", "https://kept.example.com"])
+    runner.invoke(app, ["config", "set-token", "old-token"])
+    result = runner.invoke(app, ["config", "init"], input="\n\n")
+    assert result.exit_code == 0
+    with open(config_dir / "default.toml", "rb") as f:
+        assert tomllib.load(f)["url"] == "https://kept.example.com"
+
+
+def test_init_saves_despite_validation_failure(config_dir, monkeypatch):
+    monkeypatch.setattr(
+        "tbctl.commands.config_cmd.check_connection",
+        lambda url, token: (False, "401 Unauthorized"),
+    )
+    result = runner.invoke(app, ["config", "init"], input="https://example.com\nbad-token\n")
+    assert result.exit_code == 0
+    assert "Warning" in result.output
+    with open(config_dir / "default.toml", "rb") as f:
+        assert tomllib.load(f)["token"] == "bad-token"
+
+
+def test_init_profile(config_dir, monkeypatch):
+    _ok(monkeypatch)
+    result = runner.invoke(
+        app, ["-c", "staging", "config", "init"], input="https://staging.example.com\ntok\n"
+    )
+    assert result.exit_code == 0
+    with open(config_dir / "staging.toml", "rb") as f:
+        assert tomllib.load(f)["url"] == "https://staging.example.com"

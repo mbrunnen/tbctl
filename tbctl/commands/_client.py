@@ -30,9 +30,18 @@ def make_api_client(configuration):
     return _TbApiClient(configuration=configuration)
 
 
+def build_client(url: str, token: str):
+    from tb_client.configuration import Configuration
+
+    configuration = Configuration(host=url.rstrip("/"))
+    configuration.api_key = {"API key form": token}
+    configuration.api_key_prefix = {"API key form": "ApiKey"}
+    return make_api_client(configuration)
+
+
 def _configuration(profile: str):
     try:
-        from tb_client.configuration import Configuration
+        from tb_client.configuration import Configuration  # noqa: F401
     except ImportError:
         typer.echo("tb_client not found. Run ./generate.sh to generate the client.", err=True)
         raise typer.Exit(1)
@@ -42,10 +51,23 @@ def _configuration(profile: str):
         typer.echo(f"Profile '{profile}' not configured. Run `tbctl config set-url`.", err=True)
         raise typer.Exit(1)
 
-    configuration = Configuration(host=conf["url"].rstrip("/"))
-    configuration.api_key = {"API key form": conf["token"]}
-    configuration.api_key_prefix = {"API key form": "ApiKey"}
-    return make_api_client(configuration)
+    return build_client(conf["url"], conf["token"])
+
+
+def check_connection(url: str, token: str) -> tuple[bool, str]:
+    """Verify a URL and token against /api/auth/user without ever raising."""
+    try:
+        from tb_client.exceptions import ApiException
+    except ImportError:
+        return False, "tb_client not found; run ./generate.sh"
+
+    try:
+        user = raw_get(build_client(url, token), "/api/auth/user")
+    except ApiException as e:
+        return False, f"{e.status} {e.reason or ''}".strip()
+    except Exception as e:
+        return False, str(e)
+    return True, user.get("email", "")
 
 
 def telemetry_api(profile: str):
@@ -137,7 +159,7 @@ def raw_get(api, resource_path, query=None):
     cannot be imported (a circular import in its alarm-condition models), so we
     reuse the importable device client's HTTP machinery instead.
     """
-    ac = api.api_client
+    ac = getattr(api, "api_client", api)
     request = ac.param_serialize(
         method="GET",
         resource_path=resource_path,
