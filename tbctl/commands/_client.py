@@ -129,7 +129,8 @@ def resolve_device_id(profile: str, device: str) -> str:
     from tb_client.exceptions import ApiException
 
     try:
-        found = device_api(profile).get_tenant_device(device_name=device)
+        response = device_api(profile).get_tenant_device_without_preload_content(device_name=device)
+        found = raw_json(response)
     except ApiException as e:
         if e.status == 403:
             typer.echo(
@@ -141,10 +142,10 @@ def resolve_device_id(profile: str, device: str) -> str:
         handle_api_error(e)
     except Exception as e:
         handle_api_error(e)
-    if found is None or found.id is None:
+    if not found or found.get("id", {}).get("id") is None:
         typer.echo(f"Device '{device}' not found.", err=True)
         raise typer.Exit(1)
-    return str(found.id.id)
+    return str(found["id"]["id"])
 
 
 def raw_json(response):

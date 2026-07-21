@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from tbctl.commands._client import (
@@ -7,6 +9,15 @@ from tbctl.commands._client import (
     parse_response,
     resolve_device_id,
 )
+
+
+def _device_response(payload, status=200):
+    from unittest.mock import MagicMock
+
+    response = MagicMock()
+    response.status = status
+    response.data = json.dumps(payload).encode()
+    return response
 
 
 def test_api_client_strips_uri_template():
@@ -42,14 +53,29 @@ def test_resolve_device_id_uuid_passthrough():
 def test_resolve_device_id_name_lookup(monkeypatch):
     from unittest.mock import MagicMock
 
-    found = MagicMock()
-    found.id.id = "resolved-uuid"
     api = MagicMock()
-    api.get_tenant_device.return_value = found
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {"id": {"id": "resolved-uuid"}}
+    )
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
-    api.get_tenant_device.assert_called_once_with(device_name="OX1-UQEUBW")
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-UQEUBW")
+
+
+def test_resolve_device_id_name_lookup_tolerates_default_transport(monkeypatch):
+    from unittest.mock import MagicMock
+
+    api = MagicMock()
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {
+            "id": {"id": "resolved-uuid"},
+            "deviceData": {"transportConfiguration": {"type": "DEFAULT"}},
+        }
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
 
 
 def test_resolve_device_id_not_found(monkeypatch):
@@ -58,7 +84,7 @@ def test_resolve_device_id_not_found(monkeypatch):
     import typer
 
     api = MagicMock()
-    api.get_tenant_device.return_value = None
+    api.get_tenant_device_without_preload_content.return_value = _device_response(None)
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     with pytest.raises(typer.Exit):
@@ -121,7 +147,9 @@ def test_resolve_device_id_403_hint(monkeypatch, capsys):
     from tb_client.exceptions import ApiException
 
     api = MagicMock()
-    api.get_tenant_device.side_effect = ApiException(status=403, reason="Forbidden")
+    api.get_tenant_device_without_preload_content.side_effect = ApiException(
+        status=403, reason="Forbidden"
+    )
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
 
     with pytest.raises(typer.Exit):
