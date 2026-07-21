@@ -63,6 +63,12 @@ tbctl ota download --name app-fw --latest                   # newest package wit
 tbctl ota download --name app-fw --version 1.4.0 --type SOFTWARE
 tbctl ota download --name app-fw -o ./out.bin --force       # custom path, overwrite if present
 
+tbctl ota assign app-fw thermostat-01                       # assign latest by title, to a device
+tbctl ota assign app-fw thermostat-01 --version 1.4.0 --type SOFTWARE
+tbctl ota assign <package-uuid> <device-uuid>
+tbctl ota unassign thermostat-01                            # clear the device's FIRMWARE assignment
+tbctl ota unassign thermostat-01 --type SOFTWARE
+
 tbctl device list
 tbctl device list --search sensor --type default --sort-by createdTime --sort-order DESC
 tbctl device list --customer <customer-uuid> --token   # devices of a customer, with access tokens
@@ -93,6 +99,11 @@ unless `--version` is given; for `--name`, the newest version is used unless
 software). Without `-o/--output` the file is saved under the package's own file
 name in the current directory, and an existing file is only overwritten with
 `--force`.
+
+`tbctl ota assign` takes a package id or title and a device. `--type` defaults
+to `FIRMWARE`; with a title, the newest version is used unless `--version` is
+given. `tbctl ota unassign` clears the device's `--type` assignment (default
+`FIRMWARE`).
 
 ## Development
 
