@@ -37,10 +37,12 @@ tbctl --install-completion
 exec zsh
 ```
 
-For a local checkout, `uv tool upgrade` does not apply; reinstall instead:
+For a local checkout, `uv tool upgrade` does not apply; reinstall instead.
+Because the version does not change between builds, `--refresh` is needed to
+bypass the cached wheel:
 
 ```sh
-uv tool install . --force
+uv tool install . --reinstall --refresh
 ```
 
 ## Configuration
