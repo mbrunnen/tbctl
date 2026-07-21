@@ -712,3 +712,240 @@ def test_download_by_device_no_assignment(tmp_path, monkeypatch):
 
     assert result.exit_code != 0
     assert "no FIRMWARE" in result.stderr
+
+
+# --- assign command ---
+
+ASSIGN_DEVICE_UUID = "1332f070-59ee-11f1-841f-31b578843dc8"
+PKG_UUID = "1332f070-59ee-11f1-841f-000000000001"
+
+
+def _uuid_package(pkg_type="FIRMWARE"):
+    pkg = _mock_package(pkg_type=pkg_type)
+    pkg.id.id = PKG_UUID
+    return pkg
+
+
+def test_assign_by_id_sets_firmware():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "assign", PKG_UUID, ASSIGN_DEVICE_UUID])
+
+    assert result.exit_code == 0, result.output
+    body = save_raw.call_args.args[1]
+    assert body["firmwareId"] == {"id": PKG_UUID, "entityType": "OTA_PACKAGE"}
+    assert "Assigned Firmware 1.0 1.0" in result.output
+
+
+def test_assign_by_title_latest():
+    mock_api = MagicMock()
+    page = MagicMock()
+    page.data = [
+        _mock_package(pkg_id="old", version="1.0"),
+        _mock_package(pkg_id="new", version="2.0"),
+    ]
+    page.data[0].created_time = 100
+    page.data[1].created_time = 200
+    mock_api.get_ota_packages.return_value = page
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "assign", "Firmware 1.0", ASSIGN_DEVICE_UUID])
+
+    assert result.exit_code == 0, result.output
+    assert save_raw.call_args.args[1]["firmwareId"]["id"] == "new"
+
+
+def test_assign_by_title_version():
+    mock_api = MagicMock()
+    page = MagicMock()
+    page.data = [
+        _mock_package(pkg_id="v1", version="1.0"),
+        _mock_package(pkg_id="v2", version="2.0"),
+    ]
+    page.data[0].created_time = 100
+    page.data[1].created_time = 200
+    mock_api.get_ota_packages.return_value = page
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(
+            app, ["ota", "assign", "Firmware 1.0", ASSIGN_DEVICE_UUID, "--version", "1.0"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert save_raw.call_args.args[1]["firmwareId"]["id"] == "v1"
+
+
+def test_assign_type_software_sets_software_field():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package(pkg_type="SOFTWARE")
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(
+            app, ["ota", "assign", PKG_UUID, ASSIGN_DEVICE_UUID, "--type", "SOFTWARE"]
+        )
+
+    assert result.exit_code == 0, result.output
+    body = save_raw.call_args.args[1]
+    assert body["softwareId"] == {"id": PKG_UUID, "entityType": "OTA_PACKAGE"}
+    assert "firmwareId" not in body
+
+
+def test_assign_type_mismatch_fails():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package(pkg_type="SOFTWARE")
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "assign", PKG_UUID, ASSIGN_DEVICE_UUID])
+
+    assert result.exit_code == 1
+    assert "SOFTWARE" in result.stderr
+    save_raw.assert_not_called()
+
+
+def test_assign_version_with_uuid_fails():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(
+            app, ["ota", "assign", PKG_UUID, ASSIGN_DEVICE_UUID, "--version", "1.0"]
+        )
+
+    assert result.exit_code == 1
+    assert "cannot" in result.stderr
+    save_raw.assert_not_called()
+
+
+def test_assign_version_and_latest_fails():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "ota",
+                "assign",
+                "Firmware 1.0",
+                ASSIGN_DEVICE_UUID,
+                "--version",
+                "1.0",
+                "--latest",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert "mutually exclusive" in result.stderr
+    save_raw.assert_not_called()
+
+
+def test_assign_resolves_device_name():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _uuid_package()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID) as resolve,
+        patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}),
+    ):
+        result = runner.invoke(app, ["ota", "assign", PKG_UUID, "sensor-1"])
+
+    assert result.exit_code == 0, result.output
+    resolve.assert_called_once_with("default", "sensor-1")
+
+
+# --- unassign command ---
+
+
+def test_unassign_clears_firmware():
+    device = {"id": {"id": ASSIGN_DEVICE_UUID}, "firmwareId": {"id": "abc-123"}}
+
+    with (
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value=device),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "unassign", ASSIGN_DEVICE_UUID])
+
+    assert result.exit_code == 0, result.output
+    assert save_raw.call_args.args[1]["firmwareId"] is None
+    assert "Cleared FIRMWARE" in result.output
+
+
+def test_unassign_idempotent_when_unset():
+    device = {"id": {"id": ASSIGN_DEVICE_UUID}}
+
+    with (
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value=device),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "unassign", ASSIGN_DEVICE_UUID])
+
+    assert result.exit_code == 0, result.output
+    save_raw.assert_not_called()
+    assert "no FIRMWARE package" in result.output
+
+
+def test_unassign_software():
+    device = {"id": {"id": ASSIGN_DEVICE_UUID}, "softwareId": {"id": "abc-123"}}
+
+    with (
+        patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.ota.resolve_device_id", return_value=ASSIGN_DEVICE_UUID),
+        patch("tbctl.commands.ota.raw_get", return_value=device),
+        patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
+    ):
+        result = runner.invoke(app, ["ota", "unassign", ASSIGN_DEVICE_UUID, "--type", "SOFTWARE"])
+
+    assert result.exit_code == 0, result.output
+    assert save_raw.call_args.args[1]["softwareId"] is None
+    assert "Cleared SOFTWARE" in result.output

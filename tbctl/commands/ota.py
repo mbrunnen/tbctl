@@ -6,6 +6,7 @@ import typer
 import tbctl.config as cfg
 from tbctl.commands._client import (
     _UUID_RE,
+    _save_device_raw,
     device_api,
     raw_get,
     resolve_device_id,
@@ -334,3 +335,85 @@ def delete_package(
     except Exception as e:
         _handle_api_error(e)
     typer.echo(f"Deleted {id}")
+
+
+@app.command("assign")
+def assign_package(
+    ctx: typer.Context,
+    package: str = typer.Argument(help="OTA package UUID or title."),
+    device: str = typer.Argument(help="Device UUID or name."),
+    version: str = typer.Option(None, "--version", "-v", help="Package version (with a title)."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
+    type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
+):
+    pkg_type = type.upper()
+    if pkg_type not in ("FIRMWARE", "SOFTWARE"):
+        typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
+        raise typer.Exit(1)
+
+    by_id = bool(_UUID_RE.match(package))
+    if by_id and version:
+        typer.echo("--version cannot be combined with a package UUID.", err=True)
+        raise typer.Exit(1)
+    if version and latest:
+        typer.echo("--version and --latest are mutually exclusive.", err=True)
+        raise typer.Exit(1)
+
+    cfg_profile = ctx.obj["profile"]
+    api, info = _resolve_package_info(
+        cfg_profile,
+        package_id=package if by_id else None,
+        device_profile=None,
+        device=None,
+        name=None if by_id else package,
+        version=version,
+        latest=latest,
+        pkg_type=pkg_type,
+    )
+    if (info.type or "") != pkg_type:
+        typer.echo(f"Package '{info.title}' is {info.type}, not {pkg_type}.", err=True)
+        raise typer.Exit(1)
+
+    dev_api = device_api(cfg_profile)
+    device_id = resolve_device_id(cfg_profile, device)
+    try:
+        dev = raw_get(dev_api, f"/api/device/{device_id}")
+    except Exception as e:
+        _handle_api_error(e)
+    field = "firmwareId" if pkg_type == "FIRMWARE" else "softwareId"
+    dev[field] = {"id": str(info.id.id), "entityType": "OTA_PACKAGE"}
+    try:
+        _save_device_raw(dev_api, dev)
+    except Exception as e:
+        _handle_api_error(e)
+    typer.echo(f"Assigned {info.title} {info.version} to {device_id}")
+
+
+@app.command("unassign")
+def unassign_package(
+    ctx: typer.Context,
+    device: str = typer.Argument(help="Device UUID or name."),
+    type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
+):
+    pkg_type = type.upper()
+    if pkg_type not in ("FIRMWARE", "SOFTWARE"):
+        typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
+        raise typer.Exit(1)
+
+    cfg_profile = ctx.obj["profile"]
+    dev_api = device_api(cfg_profile)
+    device_id = resolve_device_id(cfg_profile, device)
+    try:
+        dev = raw_get(dev_api, f"/api/device/{device_id}")
+    except Exception as e:
+        _handle_api_error(e)
+    field = "firmwareId" if pkg_type == "FIRMWARE" else "softwareId"
+    if not dev.get(field):
+        typer.echo(f"{device_id} has no {pkg_type} package assigned.")
+        raise typer.Exit(0)
+    dev[field] = None
+    try:
+        _save_device_raw(dev_api, dev)
+    except Exception as e:
+        _handle_api_error(e)
+    typer.echo(f"Cleared {pkg_type} assignment from {device_id}")
