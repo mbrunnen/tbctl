@@ -5,16 +5,28 @@ CLI for ThingsBoard OTA package management.
 ## Installation
 
 ```sh
-uv tool install \
-  --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/ \
-  tbctl
+uv tool install tbctl
 tbctl --install-completion
 exec zsh
 ```
 
-`tbctl` is published to TestPyPI; the extra index lets uv resolve the runtime
-dependencies from PyPI.
+Alternatively with pipx:
+
+```sh
+pipx install tbctl
+```
+
+### Testing pre-releases
+
+Release candidates are published to TestPyPI. Install one with the extra index
+so uv can resolve the runtime dependencies from PyPI:
+
+```sh
+uv tool install \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ \
+  tbctl
+```
 
 ### From a local checkout
 
