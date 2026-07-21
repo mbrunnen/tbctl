@@ -13,7 +13,7 @@ The client lives in `generated/tb_client/`, built by `./generate.sh`.
 ```sh
 uv sync                 # install deps into venv
 uv run tbctl            # run the CLI during development
-pipx install .          # install the CLI globally
+uv tool install .       # install the CLI globally
 tbctl --install-completion  # install completion for the current shell (zsh -> ~/.zfunc/_tbctl)
 
 uv run pytest                                        # run all tests

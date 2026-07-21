@@ -64,7 +64,7 @@ def test_iter_command_lines_extracts_only_fenced_tbctl_lines():
             "```sh",
             "tbctl ota list --json   # a comment",
             "uv run tbctl config show",
-            "pipx install .",
+            "uv tool install .",
             "```",
             "`tbctl ota get <uuid>` inline prose ignored",
         ]
