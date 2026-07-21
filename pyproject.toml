@@ -1,12 +1,26 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.26", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "tbctl"
-version = "0.1.0"
+dynamic = ["version"]
+description = "CLI for ThingsBoard OTA package management"
+readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Manoel Brunnen" }]
+keywords = ["thingsboard", "ota", "cli", "iot"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = [
     "typer>=0.12",
     "rich>=13",
@@ -17,14 +31,25 @@ dependencies = [
     "plotext>=5",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mbrunnen/tbctl"
+Repository = "https://github.com/mbrunnen/tbctl"
+Issues = "https://github.com/mbrunnen/tbctl/issues"
+
 [project.scripts]
 tbctl = "tbctl.cli:main"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build]
 ignore-vcs = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["tbctl", "generated/tb_client"]
+
+[tool.hatch.build.targets.sdist]
+include = ["tbctl", "generated/tb_client", "README.md", "LICENSE"]
 
 [dependency-groups]
 dev = [
