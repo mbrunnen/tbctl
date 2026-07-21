@@ -139,8 +139,16 @@ given. `tbctl ota unassign` clears the device's `--type` assignment (default
 ## Development
 
 ```sh
+./generate.sh   # build the client first, so the editable install can see it
 uv sync
 uv run tbctl
 uv run pytest
 pre-commit run --all-files
+```
+
+The editable install only sees `tb_client` if it exists at install time. After
+regenerating the client, refresh the editable path:
+
+```sh
+uv pip install -e . --force-reinstall
 ```
