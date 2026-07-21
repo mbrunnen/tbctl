@@ -49,7 +49,7 @@ ignore-vcs = true
 packages = ["tbctl", "generated/tb_client"]
 
 [tool.hatch.build.targets.sdist]
-include = ["tbctl", "generated/tb_client", "README.md", "LICENSE"]
+include = ["/tbctl", "/generated/tb_client", "/README.md", "/LICENSE"]
 
 [dependency-groups]
 dev = [
