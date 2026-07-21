@@ -193,3 +193,29 @@ def resolve_profile_id(profile: str, name: str) -> str:
         typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
         raise typer.Exit(1)
     return matches[0]["id"]["id"]
+
+
+def _save_device_raw(api, body):
+    """Save a device from a plain dict, bypassing the Device model.
+
+    The generated Device model both fails to import cleanly (circular import)
+    and cannot round-trip ``deviceData`` (undiscriminated ``oneOf``). Building a
+    plain dict and serialising it through the endpoint's own request builder
+    avoids the model entirely on both the request and response sides.
+    """
+    request = api._save_device_serialize(
+        device=body,
+        access_token=None,
+        entity_group_id=None,
+        entity_group_ids=None,
+        name_conflict_policy=None,
+        uniquify_separator=None,
+        uniquify_strategy=None,
+        _request_auth=None,
+        _content_type=None,
+        _headers=None,
+        _host_index=0,
+    )
+    response = api.api_client.call_api(*request)
+    response.read()
+    return raw_json(response)

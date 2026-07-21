@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import typer
 
 from tbctl.commands._client import (
+    _save_device_raw,
     device_api,
     handle_api_error,
     owner_api,
@@ -130,32 +131,6 @@ def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUI
     except Exception as e:
         handle_api_error(e)
     typer.echo(json.dumps(data, indent=2))
-
-
-def _save_device_raw(api, body):
-    """Save a device from a plain dict, bypassing the Device model.
-
-    The generated Device model both fails to import cleanly (circular import)
-    and cannot round-trip ``deviceData`` (undiscriminated ``oneOf``). Building a
-    plain dict and serialising it through the endpoint's own request builder
-    avoids the model entirely on both the request and response sides.
-    """
-    request = api._save_device_serialize(
-        device=body,
-        access_token=None,
-        entity_group_id=None,
-        entity_group_ids=None,
-        name_conflict_policy=None,
-        uniquify_separator=None,
-        uniquify_strategy=None,
-        _request_auth=None,
-        _content_type=None,
-        _headers=None,
-        _host_index=0,
-    )
-    response = api.api_client.call_api(*request)
-    response.read()
-    return raw_json(response)
 
 
 @app.command("create")
