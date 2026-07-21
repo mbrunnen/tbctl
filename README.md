@@ -16,12 +16,31 @@ exec zsh
 `tbctl` is published to TestPyPI; the extra index lets uv resolve the runtime
 dependencies from PyPI.
 
+### From a local checkout
+
+To install the working tree instead of the published package, point `uv tool
+install` at the path (a bare `uv tool install tbctl` fails because the package
+is not on the public registry):
+
+```sh
+./generate.sh            # build the generated client (gitignored, bundled into the wheel)
+uv tool install .        # install the current checkout as a uv tool
+tbctl --install-completion
+exec zsh
+```
+
 ## Update
 
 ```sh
 uv tool upgrade tbctl
 tbctl --install-completion
 exec zsh
+```
+
+For a local checkout, `uv tool upgrade` does not apply; reinstall instead:
+
+```sh
+uv tool install . --force
 ```
 
 ## Configuration
