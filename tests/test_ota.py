@@ -949,3 +949,270 @@ def test_unassign_software():
     assert result.exit_code == 0, result.output
     assert save_raw.call_args.args[1]["softwareId"] is None
     assert "Cleared SOFTWARE" in result.output
+
+
+# --- Upload ---
+
+
+def test_upload_file(tmp_path, monkeypatch):
+    import hashlib
+
+    monkeypatch.chdir(tmp_path)
+    fw = tmp_path / "firmware.bin"
+    payload = b"\x01\x02\x03firmware-bytes"
+    fw.write_bytes(payload)
+    expected_checksum = hashlib.sha256(payload).hexdigest()
+
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post", return_value={"id": {"id": "new-pkg-id"}}) as post,
+    ):
+        result = runner.invoke(
+            app,
+            ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID],
+        )
+
+    assert result.exit_code == 0, result.output
+    path_arg, body = post.call_args.args[1], post.call_args.args[2]
+    assert path_arg == "/api/otaPackage"
+    assert body["title"] == "fw"
+    assert body["version"] == "1.0"
+    assert body["type"] == "FIRMWARE"
+    assert body["usesUrl"] is False
+    assert body["deviceProfileId"]["id"] == PROFILE_UUID
+    # fileName and checksumAlgorithm are set by the data step, not the info step
+    assert "fileName" not in body
+    assert "checksumAlgorithm" not in body
+    mock_api.save_ota_package_data.assert_called_once_with(
+        ota_package_id="new-pkg-id",
+        checksum_algorithm="SHA256",
+        file=("firmware.bin", payload),
+        checksum=expected_checksum,
+    )
+    assert "new-pkg-id" in result.output
+
+
+def test_upload_url():
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post", return_value={"id": {"id": "url-pkg-id"}}) as post,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "ota",
+                "upload",
+                "--url",
+                "http://example.com/fw.bin",
+                "-T",
+                "fw",
+                "-v",
+                "2.0",
+                "-p",
+                PROFILE_UUID,
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    body = post.call_args.args[2]
+    assert body["usesUrl"] is True
+    assert body["url"] == "http://example.com/fw.bin"
+    mock_api.save_ota_package_data.assert_not_called()
+    assert "url-pkg-id" in result.output
+
+
+def test_upload_requires_device_profile(tmp_path):
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post") as post,
+    ):
+        result = runner.invoke(app, ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0"])
+
+    assert result.exit_code != 0
+    assert "device-profile" in result.output.lower()
+    post.assert_not_called()
+
+
+def test_upload_requires_source():
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post") as post,
+    ):
+        result = runner.invoke(app, ["ota", "upload", "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID])
+
+    assert result.exit_code != 0
+    assert "exactly one" in result.stderr.lower()
+    post.assert_not_called()
+
+
+def test_upload_file_and_url_conflict(tmp_path):
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post") as post,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "ota",
+                "upload",
+                str(fw),
+                "--url",
+                "http://example.com/fw.bin",
+                "-T",
+                "fw",
+                "-v",
+                "1.0",
+                "-p",
+                PROFILE_UUID,
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "exactly one" in result.stderr.lower()
+    post.assert_not_called()
+
+
+def test_upload_invalid_type(tmp_path):
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post") as post,
+    ):
+        result = runner.invoke(
+            app,
+            ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID, "-t", "BOGUS"],
+        )
+
+    assert result.exit_code != 0
+    assert "FIRMWARE or SOFTWARE" in result.stderr
+    post.assert_not_called()
+
+
+def test_upload_resolves_device_profile_name(tmp_path):
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post", return_value={"id": {"id": "new-pkg-id"}}) as post,
+        patch("tbctl.commands.ota.resolve_profile_id", return_value=PROFILE_UUID) as rp,
+    ):
+        result = runner.invoke(
+            app,
+            ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", "thermostat"],
+        )
+
+    assert result.exit_code == 0, result.output
+    rp.assert_called_once()
+    body = post.call_args.args[2]
+    assert body["deviceProfileId"]["id"] == PROFILE_UUID
+    assert body["deviceProfileId"]["entityType"] == "DEVICE_PROFILE"
+
+
+def test_upload_api_exception(tmp_path):
+    from tb_client.exceptions import ApiException
+
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch(
+            "tbctl.commands.ota.raw_post",
+            side_effect=ApiException(status=400, reason="Bad Request"),
+        ),
+    ):
+        result = runner.invoke(
+            app, ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID]
+        )
+
+    assert result.exit_code != 0
+    assert "400" in result.stderr
+
+
+def test_upload_rolls_back_on_data_failure(tmp_path):
+    from tb_client.exceptions import ApiException
+
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    mock_api = MagicMock()
+    mock_api.save_ota_package_data.side_effect = ApiException(status=400, reason="Bad Request")
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.raw_post", return_value={"id": {"id": "pkg-x"}}),
+    ):
+        result = runner.invoke(
+            app, ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID]
+        )
+
+    assert result.exit_code != 0
+    assert "400" in result.stderr
+    mock_api.delete_ota_package.assert_called_once_with(ota_package_id="pkg-x")
+
+
+def test_upload_error_shows_server_message_not_raw_json(tmp_path):
+    from tb_client.exceptions import ApiException
+
+    fw = tmp_path / "firmware.bin"
+    fw.write_bytes(b"data")
+    body = (
+        '{"status":400,"message":"OtaPackage with such title and version already '
+        'exists!","errorCode":31}'
+    )
+    mock_api = MagicMock()
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch(
+            "tbctl.commands.ota.raw_post",
+            side_effect=ApiException(status=400, body=body),
+        ),
+    ):
+        result = runner.invoke(
+            app, ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0", "-p", PROFILE_UUID]
+        )
+
+    assert result.exit_code != 0
+    assert "OtaPackage with such title and version already exists!" in result.stderr
+    assert "errorCode" not in result.stderr
+    assert "{" not in result.stderr
+
+
+def test_upload_body_serialises_all_fields():
+    """Regression: the generated model dropped every field, sending an empty body."""
+    from tb_client.api_client import ApiClient
+    from tbctl.commands.ota import _info_body
+
+    body = _info_body(
+        title="application-ox_label_legacy@13.2.0/nrf9151/ns",
+        version="0.12.3-debug",
+        pkg_type="FIRMWARE",
+        profile_id=PROFILE_UUID,
+        content_type=None,
+        url=None,
+    )
+    sanitised = ApiClient().sanitize_for_serialization(body)
+    assert sanitised["title"] == "application-ox_label_legacy@13.2.0/nrf9151/ns"
+    assert sanitised["version"] == "0.12.3-debug"
+    assert sanitised["type"] == "FIRMWARE"
+    assert sanitised["deviceProfileId"]["id"] == PROFILE_UUID

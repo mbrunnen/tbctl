@@ -54,6 +54,10 @@ tbctl ota list --json
 tbctl ota get <uuid>
 tbctl ota delete <uuid>
 
+tbctl ota upload firmware.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
+tbctl ota upload firmware.bin --title app-sw --version 1.4.0 --type SOFTWARE --device-profile sensor-v2
+tbctl ota upload --url http://host/fw.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
+
 tbctl ota download <uuid>                                   # by package id
 tbctl ota download --device-profile sensor-v2               # profile's assigned firmware
 tbctl ota download --device-profile sensor-v2 --version 1.4.0
@@ -91,6 +95,12 @@ tbctl attributes get <device> --scope SERVER_SCOPE --keys fwVersion
 
 `<device>` accepts a device UUID or a device name. Name resolution needs an API
 token with tenant device-read permission; otherwise pass the UUID directly.
+
+`tbctl ota upload` creates a package from exactly one source: a local file
+argument or `--url` for an externally hosted package. `--title`, `--version`,
+and `--device-profile` (name or UUID) are required; `--type` defaults to
+`FIRMWARE`. For file uploads the checksum is computed locally
+(`--checksum-algorithm`, default `SHA256`) and sent alongside the data.
 
 `tbctl ota download` takes exactly one selector (a package id, `--device-profile`,
 `--device`, or `--name`). For a profile or device, the assigned package is used

@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,7 +9,9 @@ from tbctl.commands._client import (
     _UUID_RE,
     _save_device_raw,
     device_api,
+    handle_api_error,
     raw_get,
+    raw_post,
     resolve_device_id,
     resolve_profile_id,
 )
@@ -44,15 +47,6 @@ def _get_api(profile: str):
     configuration.api_key = {"API key form": conf["token"]}
     configuration.api_key_prefix = {"API key form": "ApiKey"}
     return OtaPackageControllerApi(make_api_client(configuration))
-
-
-def _handle_api_error(e):
-    from tb_client.exceptions import ApiException
-
-    if isinstance(e, ApiException):
-        typer.echo(f"API error {e.status}: {e.reason or e.body}", err=True)
-        raise typer.Exit(1)
-    raise e
 
 
 @app.command("list")
@@ -96,7 +90,7 @@ def list_packages(
                 sort_order=sort_order,
             )
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
 
     if not result.data:
         typer.echo("[]" if output_json else "No OTA packages found.")
@@ -134,13 +128,131 @@ def list_packages(
     console.print(f"Showing {len(result.data)} of {result.total_elements} packages")
 
 
+_HASHLIB_ALGOS = {"MD5": "md5", "SHA256": "sha256", "SHA384": "sha384", "SHA512": "sha512"}
+
+
+def _compute_checksum(data: bytes, algorithm: str):
+    name = _HASHLIB_ALGOS.get(algorithm)
+    if name is None:
+        return None
+    return hashlib.new(name, data).hexdigest()
+
+
+def _info_body(*, title, version, pkg_type, profile_id, content_type, url):
+    """Build the OTA package info body.
+
+    For file uploads the body stays minimal: ThingsBoard sets fileName,
+    checksumAlgorithm, contentType and dataSize from the data upload and rejects
+    an info request that tries to set them up front.
+    """
+    body = {
+        "title": title,
+        "version": version,
+        "type": pkg_type,
+        "usesUrl": bool(url),
+    }
+    if url:
+        body["url"] = url
+        if content_type:
+            body["contentType"] = content_type
+    if profile_id:
+        body["deviceProfileId"] = {"id": profile_id, "entityType": "DEVICE_PROFILE"}
+    return body
+
+
+@app.command("upload")
+def upload_package(
+    ctx: typer.Context,
+    file: str = typer.Argument(None, help="Path to the firmware/software file."),
+    title: str = typer.Option(..., "--title", "-T", help="OTA package title."),
+    version: str = typer.Option(..., "--version", "-v", help="OTA package version."),
+    type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
+    device_profile: str = typer.Option(
+        ..., "--device-profile", "-p", help="Device profile name or UUID (required by ThingsBoard)."
+    ),
+    url: str = typer.Option(None, "--url", help="URL of an externally hosted package."),
+    checksum_algorithm: str = typer.Option(
+        "SHA256", "--checksum-algorithm", help="Checksum algorithm for file uploads."
+    ),
+    content_type: str = typer.Option(None, "--content-type", help="OTA package content type."),
+):
+    pkg_type = type.upper()
+    if pkg_type not in ("FIRMWARE", "SOFTWARE"):
+        typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
+        raise typer.Exit(1)
+    if bool(file) == bool(url):
+        typer.echo("Provide exactly one source: a FILE argument or --url.", err=True)
+        raise typer.Exit(1)
+
+    cfg_profile = ctx.obj["profile"]
+    api = _get_api(cfg_profile)
+
+    profile_id = None
+    if device_profile:
+        profile_id = (
+            device_profile
+            if _UUID_RE.match(device_profile)
+            else resolve_profile_id(cfg_profile, device_profile)
+        )
+
+    algorithm = checksum_algorithm.upper()
+    data = None
+    checksum = None
+    file_name = None
+    if file:
+        path = Path(file)
+        if not path.is_file():
+            typer.echo(f"{path} is not a file.", err=True)
+            raise typer.Exit(1)
+        data = path.read_bytes()
+        checksum = _compute_checksum(data, algorithm)
+        file_name = path.name
+
+    body = _info_body(
+        title=title,
+        version=version,
+        pkg_type=pkg_type,
+        profile_id=profile_id,
+        content_type=content_type,
+        url=url,
+    )
+    try:
+        saved = raw_post(api, "/api/otaPackage", body)
+    except Exception as e:
+        handle_api_error(e)
+    pkg_id = saved["id"]["id"]
+
+    if url:
+        typer.echo(f"Created OTA package {pkg_id} ({title} {version}) -> {url}")
+        return
+
+    try:
+        api.save_ota_package_data(
+            ota_package_id=str(pkg_id),
+            checksum_algorithm=algorithm,
+            file=(file_name, data),
+            checksum=checksum,
+        )
+    except Exception as e:
+        # The info package is already persisted; drop it so its title+version
+        # does not block a retry.
+        try:
+            api.delete_ota_package(ota_package_id=str(pkg_id))
+        except Exception:
+            pass
+        handle_api_error(e)
+    typer.echo(
+        f"Created OTA package {pkg_id} ({title} {version}), uploaded {_format_size(len(data))}"
+    )
+
+
 @app.command("get")
 def get_package(ctx: typer.Context, id: str = typer.Argument(help="OTA package UUID.")):
     api = _get_api(ctx.obj["profile"])
     try:
         pkg = api.get_ota_package_info_by_id(ota_package_id=id)
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
 
 
@@ -196,7 +308,7 @@ def _packages_for_profile(api, profile_id, pkg_type):
             sort_order=None,
         )
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     return list(page.data)
 
 
@@ -208,7 +320,7 @@ def _resolve_package_info(
         try:
             return api, api.get_ota_package_info_by_id(ota_package_id=package_id)
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
     if device_profile:
         profile_id = (
             device_profile
@@ -221,12 +333,12 @@ def _resolve_package_info(
         try:
             profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
         ota_id = _assigned_ota_id(profile, pkg_type, f"Profile '{device_profile}'")
         try:
             return api, api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
     if name:
         try:
             page = api.get_ota_packages(
@@ -237,7 +349,7 @@ def _resolve_package_info(
                 sort_order=None,
             )
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
         candidates = [
             p
             for p in page.data
@@ -249,7 +361,7 @@ def _resolve_package_info(
         try:
             dev = raw_get(device_api(cfg_profile), f"/api/device/{device_id}")
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
         profile_id = dev["deviceProfileId"]["id"]
         if version:
             candidates = _packages_for_profile(api, profile_id, pkg_type)
@@ -259,14 +371,14 @@ def _resolve_package_info(
             try:
                 profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
             except Exception as e:
-                _handle_api_error(e)
+                handle_api_error(e)
             ota_id = _assigned_ota_id(profile, pkg_type, f"Device '{device}' and its profile")
         else:
             ota_id = ref["id"]
         try:
             return api, api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
-            _handle_api_error(e)
+            handle_api_error(e)
     raise typer.Exit(1)
 
 
@@ -317,7 +429,7 @@ def download_package(
     try:
         data = api.download_ota_package(ota_package_id=str(info.id.id))
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     _write_package(info, data, output, force)
 
 
@@ -333,7 +445,7 @@ def delete_package(
     try:
         api.delete_ota_package(ota_package_id=id)
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     typer.echo(f"Deleted {id}")
 
 
@@ -379,13 +491,13 @@ def assign_package(
     try:
         dev = raw_get(dev_api, f"/api/device/{device_id}")
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     field = "firmwareId" if pkg_type == "FIRMWARE" else "softwareId"
     dev[field] = {"id": str(info.id.id), "entityType": "OTA_PACKAGE"}
     try:
         _save_device_raw(dev_api, dev)
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     typer.echo(f"Assigned {info.title} {info.version} to {device_id}")
 
 
@@ -406,7 +518,7 @@ def unassign_package(
     try:
         dev = raw_get(dev_api, f"/api/device/{device_id}")
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     field = "firmwareId" if pkg_type == "FIRMWARE" else "softwareId"
     if not dev.get(field):
         typer.echo(f"{device_id} has no {pkg_type} package assigned.")
@@ -415,5 +527,5 @@ def unassign_package(
     try:
         _save_device_raw(dev_api, dev)
     except Exception as e:
-        _handle_api_error(e)
+        handle_api_error(e)
     typer.echo(f"Cleared {pkg_type} assignment from {device_id}")

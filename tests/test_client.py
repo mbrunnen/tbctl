@@ -2,6 +2,7 @@ import pytest
 
 from tbctl.commands._client import (
     check_connection,
+    handle_api_error,
     make_api_client,
     parse_response,
     resolve_device_id,
@@ -84,6 +85,32 @@ def test_check_connection_failure(monkeypatch):
     ok, message = check_connection("https://tb.example", "bad")
     assert ok is False
     assert "401" in message
+
+
+def test_handle_api_error_shows_server_message(capsys):
+    import typer
+
+    from tb_client.exceptions import ApiException
+
+    body = '{"status":400,"message":"Device already exists!","errorCode":31}'
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=400, body=body))
+    err = capsys.readouterr().err
+    assert "Device already exists!" in err
+    assert "errorCode" not in err
+    assert "{" not in err
+
+
+def test_handle_api_error_falls_back_to_reason(capsys):
+    import typer
+
+    from tb_client.exceptions import ApiException
+
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=401, reason="Unauthorized"))
+    err = capsys.readouterr().err
+    assert "401" in err
+    assert "Unauthorized" in err
 
 
 def test_resolve_device_id_403_hint(monkeypatch, capsys):

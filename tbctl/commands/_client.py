@@ -103,11 +103,21 @@ def parse_response(value):
         return ast.literal_eval(value)
 
 
+def _error_detail(e):
+    """Pull ThingsBoard's human-readable ``message`` out of an error body."""
+    if e.body:
+        try:
+            return json.loads(e.body).get("message") or e.body
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            return e.body
+    return e.reason
+
+
 def handle_api_error(e):
     from tb_client.exceptions import ApiException
 
     if isinstance(e, ApiException):
-        typer.echo(f"API error {e.status}: {e.reason or e.body}", err=True)
+        typer.echo(f"Error {e.status}: {_error_detail(e)}", err=True)
         raise typer.Exit(1)
     raise e
 
@@ -165,6 +175,26 @@ def raw_get(api, resource_path, query=None):
         resource_path=resource_path,
         query_params=query or [],
         header_params={"Accept": "application/json"},
+        auth_settings=["API key form"],
+    )
+    response = ac.call_api(*request)
+    response.read()
+    return raw_json(response)
+
+
+def raw_post(api, resource_path, body):
+    """POST a plain-dict JSON body and return parsed JSON.
+
+    Several generated request models serialise to an empty body: their
+    ``to_dict`` excludes every payload field. Sending a hand-built dict through
+    the client's HTTP machinery sidesteps those models entirely.
+    """
+    ac = getattr(api, "api_client", api)
+    request = ac.param_serialize(
+        method="POST",
+        resource_path=resource_path,
+        body=body,
+        header_params={"Accept": "application/json", "Content-Type": "application/json"},
         auth_settings=["API key form"],
     )
     response = ac.call_api(*request)
