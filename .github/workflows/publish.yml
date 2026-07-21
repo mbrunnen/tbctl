@@ -7,10 +7,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      prerelease: ${{ steps.classify.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - id: classify
+        name: Classify tag as final release or pre-release
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
@@ -31,7 +43,7 @@ jobs:
 
   publish-testpypi:
     needs: build
-    if: contains(github.ref_name, 'rc')
+    if: needs.build.outputs.prerelease == 'true'
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
@@ -48,7 +60,7 @@ jobs:
 
   publish-pypi:
     needs: build
-    if: ${{ !contains(github.ref_name, 'rc') }}
+    if: needs.build.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
