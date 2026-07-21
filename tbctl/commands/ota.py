@@ -49,11 +49,33 @@ def _get_api(profile: str):
     return OtaPackageControllerApi(make_api_client(configuration))
 
 
+_PAGE_SIZE = 100
+
+
+def _fetch_all_pages(fetch):
+    """Collect every page from a paginated ThingsBoard list endpoint."""
+    collected = []
+    total = 0
+    page = 0
+    while True:
+        result = fetch(page)
+        data = result.data or []
+        collected.extend(data)
+        total = result.total_elements or len(collected)
+        if not data or len(collected) >= total:
+            break
+        page += 1
+    return collected, total
+
+
 @app.command("list")
 def list_packages(
     ctx: typer.Context,
     page_size: int = typer.Option(20, "--page-size", help="Packages per page."),
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on title."),
+    version: str = typer.Option(
+        None, "--version", help="Filter by version (client-side, case-insensitive substring)."
+    ),
     device_profile_id: str = typer.Option(
         None, "--device-profile", "-p", help="Filter by device profile UUID."
     ),
@@ -70,36 +92,45 @@ def list_packages(
         raise typer.Exit(1)
 
     api = _get_api(ctx.obj["profile"])
-    try:
+
+    def _fetch(page, size):
         if device_profile_id and type:
-            result = api.get_ota_packages1(
+            return api.get_ota_packages1(
                 device_profile_id=device_profile_id,
                 type=type,
-                page_size=page_size,
-                page=0,
+                page_size=size,
+                page=page,
                 text_search=text_search,
                 sort_property=sort_property,
                 sort_order=sort_order,
             )
+        return api.get_ota_packages(
+            page_size=size,
+            page=page,
+            text_search=text_search,
+            sort_property=sort_property,
+            sort_order=sort_order,
+        )
+
+    try:
+        if version:
+            data, total = _fetch_all_pages(lambda page: _fetch(page, _PAGE_SIZE))
+            needle = version.lower()
+            data = [pkg for pkg in data if needle in (pkg.version or "").lower()]
         else:
-            result = api.get_ota_packages(
-                page_size=page_size,
-                page=0,
-                text_search=text_search,
-                sort_property=sort_property,
-                sort_order=sort_order,
-            )
+            result = _fetch(0, page_size)
+            data, total = list(result.data or []), result.total_elements
     except Exception as e:
         handle_api_error(e)
 
-    if not result.data:
+    if not data:
         typer.echo("[]" if output_json else "No OTA packages found.")
         return
 
     if output_json:
         typer.echo(
             json.dumps(
-                [pkg.model_dump(by_alias=True, exclude_none=True) for pkg in result.data],
+                [pkg.model_dump(by_alias=True, exclude_none=True) for pkg in data],
                 indent=2,
                 default=str,
             )
@@ -113,7 +144,7 @@ def list_packages(
     table.add_column("Type")
     table.add_column("Size", justify="right")
 
-    for pkg in result.data:
+    for pkg in data:
         pkg_id = str(pkg.id.id) if pkg.id is not None else ""
         table.add_row(
             pkg_id,
@@ -125,7 +156,7 @@ def list_packages(
 
     console = Console()
     console.print(table)
-    console.print(f"Showing {len(result.data)} of {result.total_elements} packages")
+    console.print(f"Showing {len(data)} of {total} packages")
 
 
 _HASHLIB_ALGOS = {"MD5": "md5", "SHA256": "sha256", "SHA384": "sha384", "SHA512": "sha512"}

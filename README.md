@@ -69,6 +69,8 @@ Multiple config profiles are supported via `--config <name>` / `-c` (default: `d
 ```sh
 tbctl ota list
 tbctl ota list --search firmware --type FIRMWARE --sort-by createdTime --sort-order DESC
+tbctl ota list --version 1.4.0                             # filter by version (client-side)
+tbctl ota list --search app-fw --version 1.4.0             # narrow by title, then version
 tbctl ota list --device-profile <uuid> --type FIRMWARE
 tbctl ota list --json
 
@@ -122,6 +124,11 @@ argument or `--url` for an externally hosted package. `--title`, `--version`,
 and `--device-profile` (name or UUID) are required; `--type` defaults to
 `FIRMWARE`. For file uploads the checksum is computed locally
 (`--checksum-algorithm`, default `SHA256`) and sent alongside the data.
+
+`tbctl ota list --search` maps to ThingsBoard's server-side text search, which
+matches the package title only. Use `--version` for a client-side,
+case-insensitive substring filter on the version; when given, all pages are
+fetched and filtered locally, and it combines with `--search`.
 
 `tbctl ota download` takes exactly one selector (a package id, `--device-profile`,
 `--device`, or `--name`). For a profile or device, the assigned package is used

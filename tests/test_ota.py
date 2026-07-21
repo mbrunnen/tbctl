@@ -1216,3 +1216,133 @@ def test_upload_body_serialises_all_fields():
     assert sanitised["version"] == "0.12.3-debug"
     assert sanitised["type"] == "FIRMWARE"
     assert sanitised["deviceProfileId"]["id"] == PROFILE_UUID
+
+
+# --- list --version (client-side version filter) ---
+
+
+def _page(data, total=None):
+    page = MagicMock()
+    page.data = data
+    page.total_elements = total if total is not None else len(data)
+    return page
+
+
+def test_list_version_filters_client_side():
+    mock_api = MagicMock()
+    pkgs = [
+        _mock_package("id-1", "FW", "1.0"),
+        _mock_package("id-2", "FW", "0.12.3-debug"),
+        _mock_package("id-3", "FW", "2.0"),
+    ]
+    mock_api.get_ota_packages.return_value = _page(pkgs, total=3)
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--version", "0.12"])
+
+    assert result.exit_code == 0, result.output
+    assert "id-2" in result.output
+    assert "id-1" not in result.output
+    assert "id-3" not in result.output
+
+
+def test_list_version_case_insensitive():
+    mock_api = MagicMock()
+    pkgs = [_mock_package("id-2", "FW", "0.12.3-debug")]
+    mock_api.get_ota_packages.return_value = _page(pkgs, total=1)
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--version", "DEBUG"])
+
+    assert result.exit_code == 0, result.output
+    assert "id-2" in result.output
+
+
+def test_list_version_paginates_all_pages():
+    mock_api = MagicMock()
+    page0 = _page(
+        [_mock_package("id-1", "FW", "1.0"), _mock_package("id-2", "FW", "0.12.3")], total=3
+    )
+    page1 = _page([_mock_package("id-3", "FW", "0.12.9")], total=3)
+    mock_api.get_ota_packages.side_effect = [page0, page1]
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--version", "0.12"])
+
+    assert result.exit_code == 0, result.output
+    assert "id-2" in result.output
+    assert "id-3" in result.output
+    assert "id-1" not in result.output
+    calls = mock_api.get_ota_packages.call_args_list
+    assert len(calls) == 2
+    assert calls[0].kwargs["page"] == 0
+    assert calls[1].kwargs["page"] == 1
+
+
+def test_list_version_combines_with_search():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value = _page(
+        [_mock_package("id-2", "app-fw", "0.12.3")], total=1
+    )
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--search", "app-fw", "--version", "0.12"])
+
+    assert result.exit_code == 0, result.output
+    assert mock_api.get_ota_packages.call_args.kwargs["text_search"] == "app-fw"
+    assert "id-2" in result.output
+
+
+def test_list_version_no_match():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value = _page([_mock_package("id-1", "FW", "1.0")], total=1)
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--version", "9.9"])
+
+    assert result.exit_code == 0
+    assert "No OTA packages found" in result.output
+
+
+def test_list_version_json():
+    mock_api = MagicMock()
+    keep = _mock_package("id-2", "FW", "0.12.3-debug")
+    keep.model_dump.return_value = {"id": {"id": "id-2"}, "version": "0.12.3-debug"}
+    drop = _mock_package("id-1", "FW", "1.0")
+    drop.model_dump.return_value = {"id": {"id": "id-1"}, "version": "1.0"}
+    mock_api.get_ota_packages.return_value = _page([keep, drop], total=2)
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "list", "--version", "0.12", "--json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert [p["version"] for p in data] == ["0.12.3-debug"]
+
+
+def test_list_version_device_profile_path_paginates():
+    mock_api = MagicMock()
+    page0 = _page([_mock_package("id-1", "FW", "0.12.1")], total=2)
+    page1 = _page([_mock_package("id-2", "FW", "9.9")], total=2)
+    mock_api.get_ota_packages1.side_effect = [page0, page1]
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(
+            app,
+            [
+                "ota",
+                "list",
+                "--device-profile",
+                "dp-uuid",
+                "--type",
+                "FIRMWARE",
+                "--version",
+                "0.12",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "id-1" in result.output
+    assert "id-2" not in result.output
+    assert mock_api.get_ota_packages1.call_count == 2
+    mock_api.get_ota_packages.assert_not_called()
