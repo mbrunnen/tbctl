@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`tbctl` is a CLI for ThingsBoard OTA package management. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl config` and `tbctl ota` subcommands.
+`tbctl` is a CLI for ThingsBoard. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl config`, `tbctl ota`, `tbctl device`, `tbctl telemetry`, and `tbctl attributes` subcommands.
 
 The client lives in `generated/tb_client/`, built by `./generate.sh`.
 

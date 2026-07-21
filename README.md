@@ -1,6 +1,6 @@
 # tbctl
 
-CLI for ThingsBoard OTA package management.
+CLI for ThingsBoard: OTA packages, devices, telemetry, and attributes.
 
 ## Installation
 
@@ -8,12 +8,6 @@ CLI for ThingsBoard OTA package management.
 uv tool install tbctl
 tbctl --install-completion
 exec zsh
-```
-
-Alternatively with pipx:
-
-```sh
-pipx install tbctl
 ```
 
 ### Testing pre-releases

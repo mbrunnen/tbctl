@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tbctl"
 dynamic = ["version"]
-description = "CLI for ThingsBoard OTA package management"
+description = "CLI for ThingsBoard: OTA packages, devices, telemetry, and attributes"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
