@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import ANY, MagicMock, patch
 
 from typer.testing import CliRunner
@@ -6,6 +7,12 @@ from typer.testing import CliRunner
 from tbctl.cli import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 def _mock_package(
@@ -1037,7 +1044,7 @@ def test_upload_requires_device_profile(tmp_path):
         result = runner.invoke(app, ["ota", "upload", str(fw), "-T", "fw", "-v", "1.0"])
 
     assert result.exit_code != 0
-    assert "device-profile" in result.output.lower()
+    assert "device-profile" in _strip_ansi(result.output).lower()
     post.assert_not_called()
 
 
