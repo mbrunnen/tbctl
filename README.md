@@ -77,7 +77,8 @@ tbctl ota list
 tbctl ota list --search firmware --type FIRMWARE --sort-by createdTime --sort-order DESC
 tbctl ota list --version 1.4.0                             # filter by version (client-side)
 tbctl ota list --search app-fw --version 1.4.0             # narrow by title, then version
-tbctl ota list --device-profile <uuid> --type FIRMWARE
+tbctl ota list --device-profile sensor-v2                  # name or UUID; both types when --type omitted
+tbctl ota list --device-profile sensor-v2 --type FIRMWARE
 tbctl ota list --json
 
 tbctl ota get <uuid>
@@ -106,6 +107,8 @@ tbctl device list
 tbctl device list --search sensor --type default --sort-by createdTime --sort-order DESC
 tbctl device list --customer <customer-uuid> --token   # devices of a customer, with access tokens
 tbctl device list --json
+tbctl device profiles                                  # list device profiles
+tbctl device profiles --search sensor --json
 tbctl device get <device>
 tbctl device create sensor-1 --profile default --label Lobby
 tbctl device update sensor-1 --label "Main hall" --profile thermostat
@@ -134,7 +137,10 @@ and `--device-profile` (name or UUID) are required; `--type` defaults to
 `tbctl ota list --search` maps to ThingsBoard's server-side text search, which
 matches the package title only. Use `--version` for a client-side,
 case-insensitive substring filter on the version; when given, all pages are
-fetched and filtered locally, and it combines with `--search`.
+fetched and filtered locally, and it combines with `--search`. The listing shows
+each package's device profile; `--device-profile` accepts a name or UUID, and
+without `--type` it lists both `FIRMWARE` and `SOFTWARE` packages (`--type` alone
+still requires `--device-profile`).
 
 `tbctl ota download` takes exactly one selector (a package id, `--device-profile`,
 `--device`, or `--name`). For a profile or device, the assigned package is used

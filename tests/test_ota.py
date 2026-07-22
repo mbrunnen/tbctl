@@ -16,7 +16,12 @@ def _strip_ansi(text: str) -> str:
 
 
 def _mock_package(
-    pkg_id="abc-123", title="Firmware 1.0", version="1.0", pkg_type="FIRMWARE", size=1024
+    pkg_id="abc-123",
+    title="Firmware 1.0",
+    version="1.0",
+    pkg_type="FIRMWARE",
+    size=1024,
+    profile_id=None,
 ):
     pkg = MagicMock()
     pkg.id.id = pkg_id
@@ -24,6 +29,10 @@ def _mock_package(
     pkg.version = version
     pkg.type = pkg_type
     pkg.data_size = size
+    if profile_id is None:
+        pkg.device_profile_id = None
+    else:
+        pkg.device_profile_id.id = profile_id
     return pkg
 
 
@@ -201,14 +210,20 @@ def test_delete_api_exception():
 # --- Filter validation ---
 
 
-def test_list_device_profile_without_type():
+_LIST_PROFILE_UUID = "11111111-1111-1111-1111-111111111111"
+
+
+def test_list_device_profile_without_type_lists_both():
     mock_api = MagicMock()
+    mock_api.get_ota_packages1.return_value.data = [_mock_package()]
+    mock_api.get_ota_packages1.return_value.total_elements = 1
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "list", "--device-profile", "dp-uuid"])
+        result = runner.invoke(app, ["ota", "list", "--device-profile", _LIST_PROFILE_UUID])
 
-    assert result.exit_code != 0
-    assert "--device-profile and --type must be used together" in result.stderr
+    assert result.exit_code == 0
+    called_types = {c.kwargs["type"] for c in mock_api.get_ota_packages1.call_args_list}
+    assert called_types == {"FIRMWARE", "SOFTWARE"}
     mock_api.get_ota_packages.assert_not_called()
 
 
@@ -220,6 +235,7 @@ def test_list_type_without_device_profile():
 
     assert result.exit_code != 0
     mock_api.get_ota_packages.assert_not_called()
+    mock_api.get_ota_packages1.assert_not_called()
 
 
 def test_list_device_profile_and_type():
@@ -229,12 +245,12 @@ def test_list_device_profile_and_type():
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
         result = runner.invoke(
-            app, ["ota", "list", "--device-profile", "dp-uuid", "--type", "FIRMWARE"]
+            app, ["ota", "list", "--device-profile", _LIST_PROFILE_UUID, "--type", "FIRMWARE"]
         )
 
     assert result.exit_code == 0
     mock_api.get_ota_packages1.assert_called_once_with(
-        device_profile_id="dp-uuid",
+        device_profile_id=_LIST_PROFILE_UUID,
         type="FIRMWARE",
         page_size=20,
         page=0,
@@ -243,6 +259,58 @@ def test_list_device_profile_and_type():
         sort_order=None,
     )
     mock_api.get_ota_packages.assert_not_called()
+
+
+def test_list_device_profile_by_name_resolves():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages1.return_value.data = [_mock_package()]
+    mock_api.get_ota_packages1.return_value.total_elements = 1
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.resolve_profile_id", return_value=_LIST_PROFILE_UUID) as resolve,
+    ):
+        result = runner.invoke(
+            app, ["ota", "list", "--device-profile", "Sensor-V1", "--type", "FIRMWARE"]
+        )
+
+    assert result.exit_code == 0
+    resolve.assert_called_once_with("default", "Sensor-V1")
+    assert mock_api.get_ota_packages1.call_args.kwargs["device_profile_id"] == _LIST_PROFILE_UUID
+
+
+def test_list_shows_device_profile_column():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [_mock_package(profile_id=_LIST_PROFILE_UUID)]
+    mock_api.get_ota_packages.return_value.total_elements = 1
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch(
+            "tbctl.commands.ota.profile_name_map",
+            return_value={_LIST_PROFILE_UUID: "Sensor-V1"},
+        ) as names,
+    ):
+        result = runner.invoke(app, ["ota", "list"])
+
+    assert result.exit_code == 0
+    assert "Sensor-V1" in result.output
+    names.assert_called_once()
+
+
+def test_list_device_profile_column_falls_back_to_uuid():
+    mock_api = MagicMock()
+    mock_api.get_ota_packages.return_value.data = [_mock_package(profile_id="dp-xyz")]
+    mock_api.get_ota_packages.return_value.total_elements = 1
+
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=mock_api),
+        patch("tbctl.commands.ota.profile_name_map", return_value={}),
+    ):
+        result = runner.invoke(app, ["ota", "list"])
+
+    assert result.exit_code == 0
+    assert "dp-xyz" in result.output
 
 
 def test_list_search_filter():
@@ -1340,7 +1408,7 @@ def test_list_version_device_profile_path_paginates():
                 "ota",
                 "list",
                 "--device-profile",
-                "dp-uuid",
+                _LIST_PROFILE_UUID,
                 "--type",
                 "FIRMWARE",
                 "--version",

@@ -226,6 +226,24 @@ def resolve_profile_id(profile: str, name: str) -> str:
     return matches[0]["id"]["id"]
 
 
+def profile_name_map(api):
+    """Return ``{device_profile_uuid: name}`` for labelling OTA packages.
+
+    Auxiliary lookup: any failure degrades to an empty map so the caller falls
+    back to showing the raw UUID rather than aborting the listing.
+    """
+    try:
+        page = raw_get(api, "/api/deviceProfileInfos", [("pageSize", 1000), ("page", 0)])
+    except Exception:
+        return {}
+    result = {}
+    for p in page.get("data", []):
+        pid = (p.get("id") or {}).get("id")
+        if pid:
+            result[pid] = p.get("name")
+    return result
+
+
 def _save_device_raw(api, body):
     """Save a device from a plain dict, bypassing the Device model.
 

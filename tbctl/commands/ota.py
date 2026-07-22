@@ -10,6 +10,7 @@ from tbctl.commands._client import (
     _save_device_raw,
     device_api,
     handle_api_error,
+    profile_name_map,
     raw_get,
     raw_post,
     resolve_device_id,
@@ -52,22 +53,6 @@ def _get_api(profile: str):
 _PAGE_SIZE = 100
 
 
-def _fetch_all_pages(fetch):
-    """Collect every page from a paginated ThingsBoard list endpoint."""
-    collected = []
-    total = 0
-    page = 0
-    while True:
-        result = fetch(page)
-        data = result.data or []
-        collected.extend(data)
-        total = result.total_elements or len(collected)
-        if not data or len(collected) >= total:
-            break
-        page += 1
-    return collected, total
-
-
 @app.command("list")
 def list_packages(
     ctx: typer.Context,
@@ -76,10 +61,12 @@ def list_packages(
     version: str = typer.Option(
         None, "--version", help="Filter by version (client-side, case-insensitive substring)."
     ),
-    device_profile_id: str = typer.Option(
-        None, "--device-profile", "-p", help="Filter by device profile UUID."
+    device_profile: str = typer.Option(
+        None, "--device-profile", "-p", help="Filter by device profile name or UUID."
     ),
-    type: str = typer.Option(None, "--type", "-t", help="Filter by type: FIRMWARE or SOFTWARE."),
+    type: str = typer.Option(
+        None, "--type", "-t", help="Filter by type: FIRMWARE or SOFTWARE (needs --device-profile)."
+    ),
     sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
     sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
@@ -87,39 +74,65 @@ def list_packages(
     from rich.console import Console
     from rich.table import Table
 
-    if bool(device_profile_id) != bool(type):
-        typer.echo("--device-profile and --type must be used together.", err=True)
+    if type and not device_profile:
+        typer.echo("--type requires --device-profile.", err=True)
         raise typer.Exit(1)
 
-    api = _get_api(ctx.obj["profile"])
+    cfg_profile = ctx.obj["profile"]
+    api = _get_api(cfg_profile)
+
+    device_profile_id = None
+    if device_profile:
+        device_profile_id = (
+            device_profile
+            if _UUID_RE.match(device_profile)
+            else resolve_profile_id(cfg_profile, device_profile)
+        )
+
+    types = ([type] if type else ["FIRMWARE", "SOFTWARE"]) if device_profile_id else None
 
     def _fetch(page, size):
-        if device_profile_id and type:
-            return api.get_ota_packages1(
-                device_profile_id=device_profile_id,
-                type=type,
-                page_size=size,
-                page=page,
-                text_search=text_search,
-                sort_property=sort_property,
-                sort_order=sort_order,
-            )
-        return api.get_ota_packages(
+        """Return ``(data, total)`` for one page, across every requested type."""
+        if device_profile_id:
+            data = []
+            total = 0
+            for t in types:
+                result = api.get_ota_packages1(
+                    device_profile_id=device_profile_id,
+                    type=t,
+                    page_size=size,
+                    page=page,
+                    text_search=text_search,
+                    sort_property=sort_property,
+                    sort_order=sort_order,
+                )
+                data.extend(result.data or [])
+                total += result.total_elements or 0
+            return data, total
+        result = api.get_ota_packages(
             page_size=size,
             page=page,
             text_search=text_search,
             sort_property=sort_property,
             sort_order=sort_order,
         )
+        return list(result.data or []), result.total_elements or 0
 
     try:
         if version:
-            data, total = _fetch_all_pages(lambda page: _fetch(page, _PAGE_SIZE))
+            data = []
+            total = 0
+            page = 0
+            while True:
+                page_data, total = _fetch(page, _PAGE_SIZE)
+                data.extend(page_data)
+                if not page_data or len(data) >= total:
+                    break
+                page += 1
             needle = version.lower()
             data = [pkg for pkg in data if needle in (pkg.version or "").lower()]
         else:
-            result = _fetch(0, page_size)
-            data, total = list(result.data or []), result.total_elements
+            data, total = _fetch(0, page_size)
     except Exception as e:
         handle_api_error(e)
 
@@ -137,20 +150,27 @@ def list_packages(
         )
         return
 
+    profile_names = profile_name_map(api)
+
     table = Table(show_header=True, header_style="bold")
     table.add_column("ID")
     table.add_column("Title")
     table.add_column("Version")
     table.add_column("Type")
+    table.add_column("Device Profile")
     table.add_column("Size", justify="right")
 
     for pkg in data:
         pkg_id = str(pkg.id.id) if pkg.id is not None else ""
+        dp = getattr(pkg, "device_profile_id", None)
+        dp_id = str(dp.id) if dp is not None else None
+        profile_label = profile_names.get(dp_id, dp_id) if dp_id else "-"
         table.add_row(
             pkg_id,
             pkg.title or "",
             pkg.version or "",
             pkg.type or "",
+            profile_label,
             _format_size(getattr(pkg, "data_size", None)),
         )
 

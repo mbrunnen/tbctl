@@ -120,6 +120,58 @@ def list_devices(
     console.print(footer)
 
 
+@app.command("profiles")
+def list_profiles(
+    ctx: typer.Context,
+    page_size: int = typer.Option(20, "--page-size", help="Profiles per page."),
+    text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on name."),
+    sort_property: str = typer.Option(None, "--sort-by", help="Property to sort by."),
+    sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+):
+    query = [("pageSize", page_size), ("page", 0)]
+    if text_search:
+        query.append(("textSearch", text_search))
+    if sort_property:
+        query.append(("sortProperty", sort_property))
+    if sort_order:
+        query.append(("sortOrder", sort_order))
+
+    api = device_api(ctx.obj["profile"])
+    try:
+        page = raw_get(api, "/api/deviceProfiles", query)
+    except Exception as e:
+        handle_api_error(e)
+
+    profiles = page.get("data", [])
+    if not profiles:
+        typer.echo("[]" if output_json else "No device profiles found.")
+        return
+
+    if output_json:
+        typer.echo(json.dumps(profiles, indent=2))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("ID")
+    table.add_column("Name")
+    table.add_column("Type")
+    table.add_column("Default", justify="center")
+    for p in profiles:
+        table.add_row(
+            (p.get("id") or {}).get("id", ""),
+            p.get("name") or "",
+            p.get("type") or "",
+            "*" if p.get("default") else "",
+        )
+    console = Console()
+    console.print(table)
+    console.print(f"Showing {len(profiles)} of {page.get('totalElements', len(profiles))} profiles")
+
+
 @app.command("get")
 def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUID or name.")):
     cfg_profile = ctx.obj["profile"]

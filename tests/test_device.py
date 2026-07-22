@@ -323,3 +323,121 @@ def test_assign_requires_customer():
     result = runner.invoke(app, ["device", "assign", DEVICE_UUID])
 
     assert result.exit_code != 0
+
+
+OTHER_PROFILE_UUID = "33333333-3333-3333-3333-333333333333"
+
+
+def _profile_dict(pid=PROFILE_UUID, name="Sensor-V1", ptype="DEFAULT", default=False):
+    return {
+        "id": {"id": pid, "entityType": "DEVICE_PROFILE"},
+        "name": name,
+        "type": ptype,
+        "default": default,
+    }
+
+
+def test_profiles_list():
+    from tbctl.cli import app
+
+    page = {
+        "data": [
+            _profile_dict(default=True),
+            _profile_dict(pid=OTHER_PROFILE_UUID, name="Gateway"),
+        ],
+        "totalElements": 2,
+    }
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.raw_get", return_value=page) as raw,
+    ):
+        result = runner.invoke(app, ["device", "profiles"])
+
+    assert result.exit_code == 0
+    assert "Sensor-V1" in result.output
+    assert "Gateway" in result.output
+    assert "*" in result.output
+    assert raw.call_count == 1
+    assert raw.call_args.args[1] == "/api/deviceProfiles"
+    assert raw.call_args.args[2] == [("pageSize", 20), ("page", 0)]
+
+
+def test_profiles_query_includes_search_and_sort():
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch(
+            "tbctl.commands.device.raw_get",
+            return_value={"data": [_profile_dict()], "totalElements": 1},
+        ) as raw,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "device",
+                "profiles",
+                "--search",
+                "sensor",
+                "--sort-by",
+                "name",
+                "--sort-order",
+                "ASC",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert raw.call_args.args[2] == [
+        ("pageSize", 20),
+        ("page", 0),
+        ("textSearch", "sensor"),
+        ("sortProperty", "name"),
+        ("sortOrder", "ASC"),
+    ]
+
+
+def test_profiles_empty():
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.raw_get", return_value={"data": [], "totalElements": 0}),
+    ):
+        result = runner.invoke(app, ["device", "profiles"])
+
+    assert result.exit_code == 0
+    assert "No device profiles found" in result.output
+
+
+def test_profiles_json():
+    from tbctl.cli import app
+
+    profiles = [_profile_dict(default=True)]
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch(
+            "tbctl.commands.device.raw_get",
+            return_value={"data": profiles, "totalElements": 1},
+        ),
+    ):
+        result = runner.invoke(app, ["device", "profiles", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == profiles
+
+
+def test_profiles_api_error():
+    from tb_client.exceptions import ApiException
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch(
+            "tbctl.commands.device.raw_get",
+            side_effect=ApiException(status=403, reason="Forbidden"),
+        ),
+    ):
+        result = runner.invoke(app, ["device", "profiles"])
+
+    assert result.exit_code == 1
+    assert "403" in result.stderr
