@@ -4,9 +4,9 @@ from pathlib import Path
 
 import typer
 
-import tbctl.config as cfg
 from tbctl.commands._client import (
     _UUID_RE,
+    _configuration,
     _save_device_raw,
     device_api,
     handle_api_error,
@@ -33,21 +33,11 @@ def _format_size(size_bytes) -> str:
 def _get_api(profile: str):
     try:
         from tb_client.api.ota_package_controller_api import OtaPackageControllerApi
-        from tb_client.configuration import Configuration
-        from tbctl.commands._client import make_api_client
     except ImportError:
         typer.echo("tb_client not found. Run ./generate.sh to generate the client.", err=True)
         raise typer.Exit(1)
 
-    conf = cfg.load(profile)
-    if not conf.get("url") or not conf.get("token"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config set-url`.", err=True)
-        raise typer.Exit(1)
-
-    configuration = Configuration(host=conf["url"].rstrip("/"))
-    configuration.api_key = {"API key form": conf["token"]}
-    configuration.api_key_prefix = {"API key form": "ApiKey"}
-    return OtaPackageControllerApi(make_api_client(configuration))
+    return OtaPackageControllerApi(_configuration(profile))
 
 
 _PAGE_SIZE = 100

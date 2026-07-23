@@ -48,7 +48,7 @@ def _configuration(profile: str):
 
     conf = cfg.load(profile)
     if not conf.get("url") or not conf.get("token"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config set-url`.", err=True)
+        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config init`.", err=True)
         raise typer.Exit(1)
 
     return build_client(conf["url"], conf["token"])
