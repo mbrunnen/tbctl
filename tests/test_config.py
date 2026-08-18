@@ -138,3 +138,27 @@ def test_init_profile(config_dir, monkeypatch):
     assert result.exit_code == 0
     with open(config_dir / "staging.toml", "rb") as f:
         assert tomllib.load(f)["url"] == "https://staging.example.com"
+
+
+def test_show_flattens_the_alias_table(config_dir):
+    import tbctl.aliases as aliases
+
+    runner.invoke(app, ["config", "set-url", "https://example.com"])
+    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    aliases.add("default", "horst", "OX1-1T6570")
+
+    result = runner.invoke(app, ["config", "show"])
+
+    assert result.exit_code == 0
+    assert "aliases.ruedi = OX1-Y2HUZR" in result.output
+    assert "aliases.horst = OX1-1T6570" in result.output
+    assert "{" not in result.output
+
+
+def test_show_flattens_nested_tables(config_dir):
+    cfg.save({"url": "https://example.com", "a": {"b": {"c": "deep"}}}, "default")
+
+    result = runner.invoke(app, ["config", "show"])
+
+    assert result.exit_code == 0
+    assert "a.b.c = deep" in result.output

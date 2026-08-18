@@ -6,6 +6,16 @@ from tbctl.commands._client import check_connection
 app = typer.Typer(no_args_is_help=True, help="Manage CLI configuration.")
 
 
+def _flatten(data: dict, prefix: str = ""):
+    """Yield ``(dotted-key, value)`` pairs so nested tables print one per line."""
+    for key, value in data.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, dict):
+            yield from _flatten(value, f"{path}.")
+        else:
+            yield path, value
+
+
 @app.command("init")
 def init(ctx: typer.Context):
     """Interactively set the URL and token, verifying them against the server."""
@@ -69,5 +79,5 @@ def show(ctx: typer.Context):
     if not data:
         typer.echo(f"No configuration found for profile '{profile}'.")
         return
-    for k, v in data.items():
-        typer.echo(f"{k} = {v}")
+    for key, value in _flatten(data):
+        typer.echo(f"{key} = {value}")
