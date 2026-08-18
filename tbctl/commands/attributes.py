@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import typer
 
+import tbctl.aliases as aliases
 from tbctl.commands._client import (
     handle_api_error,
     parse_response,
@@ -24,7 +25,9 @@ def _fmt_ts(ms) -> str:
 @app.command("get")
 def get_attributes(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     scope: str = typer.Option(None, "--scope", help=f"Limit to one scope: {', '.join(SCOPES)}."),
     keys: str = typer.Option(None, "--keys", "-k", help="Comma-separated attribute keys."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),

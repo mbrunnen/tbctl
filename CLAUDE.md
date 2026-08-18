@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`tbctl` is a CLI for ThingsBoard. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl config`, `tbctl ota`, `tbctl device`, `tbctl telemetry`, and `tbctl attributes` subcommands.
+`tbctl` is a CLI for ThingsBoard. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl config`, `tbctl ota`, `tbctl device`, `tbctl alias`, `tbctl telemetry`, and `tbctl attributes` subcommands.
 
 The client lives in `generated/tb_client/`, built by `./generate.sh`.
 
@@ -29,7 +29,8 @@ uv run ruff format --check tbctl/ tests/  # format check
 
 - `tbctl/cli.py` - root Typer app
 - `tbctl/config.py` - reads/writes `~/.config/tbctl/config.toml` (url + token)
-- `tbctl/commands/` - one module per subcommand group (`config_cmd.py`, `ota.py`, `telemetry.py`, `attributes.py`)
+- `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument
+- `tbctl/commands/` - one module per subcommand group (`config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
 - `tbctl/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`
 - `generated/tb_client/` - Python client generated from `openapi-4.3.0.1PE.json` by `./generate.sh` (gitignored; run it once before installing or testing)
 

@@ -155,3 +155,65 @@ def test_resolve_device_id_403_hint(monkeypatch, capsys):
     with pytest.raises(typer.Exit):
         resolve_device_id("default", "OX1-UQEUBW")
     assert "pass the device UUID instead" in capsys.readouterr().err
+
+
+def test_resolve_device_id_maps_an_alias_to_the_device_name(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    import tbctl.aliases as aliases
+
+    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    api = MagicMock()
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {"id": {"id": "resolved-uuid"}}
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    assert resolve_device_id("default", "ruedi") == "resolved-uuid"
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-Y2HUZR")
+
+
+def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    import tbctl.aliases as aliases
+
+    aliases.add("default", "horst", "OX1-1T6570")
+    api = MagicMock()
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {"id": {"id": "resolved-uuid"}}
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    resolve_device_id("default", "horst")
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-1T6570")
+
+
+def test_resolve_device_id_takes_an_alias_pointing_at_a_uuid(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    import tbctl.aliases as aliases
+
+    uuid = "11111111-2222-3333-4444-555555555555"
+    aliases.add("default", "jacky", uuid)
+    api = MagicMock()
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    assert resolve_device_id("default", "jacky") == uuid
+    api.get_tenant_device_without_preload_content.assert_not_called()
+
+
+def test_resolve_device_id_uses_the_alias_table_of_the_active_profile(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    import tbctl.aliases as aliases
+
+    aliases.add("prod", "ruedi", "OX1-Y2HUZR")
+    api = MagicMock()
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {"id": {"id": "resolved-uuid"}}
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    resolve_device_id("test", "ruedi")
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="ruedi")

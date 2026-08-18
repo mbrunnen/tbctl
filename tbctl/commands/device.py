@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import typer
 
+import tbctl.aliases as aliases
 from tbctl.commands._client import (
     _save_device_raw,
     device_api,
@@ -21,6 +22,14 @@ def _fmt_ts(ms) -> str:
     if not ms:
         return "-"
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _alias_by_device(profile: str) -> dict[str, str]:
+    """Invert the alias table for display; the first alias per device wins."""
+    result = {}
+    for alias, target in sorted(aliases.load(profile).items()):
+        result.setdefault(target, alias)
+    return result
 
 
 def _device_access_token(api, device_id):
@@ -53,6 +62,7 @@ def list_devices(
     sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
+    alias_of = _alias_by_device(ctx.obj["profile"])
     api = device_api(ctx.obj["profile"])
     try:
         if customer:
@@ -96,6 +106,8 @@ def list_devices(
     table = Table(show_header=True, header_style="bold")
     table.add_column("ID")
     table.add_column("Name")
+    if alias_of:
+        table.add_column("Alias")
     table.add_column("Type")
     table.add_column("Label")
     table.add_column("Created (UTC)")
@@ -105,6 +117,10 @@ def list_devices(
         row = [
             (d.get("id") or {}).get("id", ""),
             d.get("name") or "",
+        ]
+        if alias_of:
+            row.append(alias_of.get(d.get("name"), ""))
+        row += [
             d.get("type") or "",
             d.get("label") or "",
             _fmt_ts(d.get("createdTime")),
@@ -173,7 +189,12 @@ def list_profiles(
 
 
 @app.command("get")
-def get_device(ctx: typer.Context, device: str = typer.Argument(help="Device UUID or name.")):
+def get_device(
+    ctx: typer.Context,
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
+):
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)
     api = device_api(cfg_profile)
@@ -210,7 +231,9 @@ def create_device(
 @app.command("update")
 def update_device(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     name: str = typer.Option(None, "--name", help="New device name."),
     label: str = typer.Option(None, "--label", help="New display label."),
     profile: str = typer.Option(None, "-p", "--profile", help="New device profile name."),
@@ -244,7 +267,9 @@ def update_device(
 @app.command("delete")
 def delete_device(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):
     cfg_profile = ctx.obj["profile"]
@@ -262,7 +287,9 @@ def delete_device(
 @app.command("assign")
 def assign_device(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     customer: str = typer.Option(..., "--customer", "-C", help="Customer UUID to own the device."),
 ):
     cfg_profile = ctx.obj["profile"]

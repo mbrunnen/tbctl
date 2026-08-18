@@ -1,6 +1,7 @@
 # tbctl
 
-CLI for ThingsBoard: OTA packages, devices, telemetry, and attributes.
+CLI for ThingsBoard: OTA packages, devices, telemetry, attributes, and local
+device aliases.
 
 ## Installation
 
@@ -115,6 +116,13 @@ tbctl device update sensor-1 --label "Main hall" --profile thermostat
 tbctl device delete sensor-1 --yes
 tbctl device assign sensor-1 --customer <customer-uuid>
 
+tbctl alias add ruedi OX1-Y2HUZR       # remember a device under a free-text name
+tbctl alias add horst OX1-1T6570
+tbctl alias list
+tbctl alias list --json
+tbctl alias rm horst
+tbctl telemetry latest ruedi --keys temperature   # aliases work as <device>
+
 tbctl telemetry keys <device>
 tbctl telemetry latest <device> --keys temperature,humidity
 tbctl telemetry history <device> --keys temperature --last 24h
@@ -125,8 +133,16 @@ tbctl attributes get <device>
 tbctl attributes get <device> --scope SERVER_SCOPE --keys fwVersion
 ```
 
-`<device>` accepts a device UUID or a device name. Name resolution needs an API
-token with tenant device-read permission; otherwise pass the UUID directly.
+`<device>` accepts a device UUID, a device name, or a local alias. Name
+resolution needs an API token with tenant device-read permission; otherwise pass
+the UUID directly.
+
+`tbctl alias` stores free-text names for devices in the active config profile
+(`~/.config/tbctl/<profile>.toml`, table `[aliases]`); they never leave your
+machine. An alias resolves wherever `<device>` is accepted, takes precedence over
+a device of the same name, and matches case-insensitively. Shell completion
+suggests the aliases of the active profile, and `tbctl device list` gains an
+`Alias` column while the profile has any.
 
 `tbctl ota upload` creates a package from exactly one source: a local file
 argument or `--url` for an externally hosted package. `--title`, `--version`,

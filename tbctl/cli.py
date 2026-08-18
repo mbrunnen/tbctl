@@ -1,7 +1,7 @@
 import typer
 
 import tbctl.config as cfg
-from tbctl.commands import attributes, config_cmd, device, ota, telemetry
+from tbctl.commands import alias, attributes, config_cmd, device, ota, telemetry
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -15,6 +15,7 @@ app.add_typer(ota.app, name="ota")
 app.add_typer(telemetry.app, name="telemetry")
 app.add_typer(attributes.app, name="attributes")
 app.add_typer(device.app, name="device")
+app.add_typer(alias.app, name="alias")
 
 
 @app.callback()

@@ -441,3 +441,75 @@ def test_profiles_api_error():
 
     assert result.exit_code == 1
     assert "403" in result.stderr
+
+
+def test_list_shows_an_alias_column():
+    import tbctl.aliases as aliases
+    from tbctl.cli import app
+
+    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {
+            "data": [_device_dict(name="OX1-Y2HUZR"), _device_dict(name="OX1-ZZ0001")],
+            "totalElements": 2,
+        }
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0
+    assert "Alias" in result.output
+    assert "ruedi" in result.output
+
+
+def test_list_omits_the_alias_column_without_aliases():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0
+    assert "Alias" not in result.output
+
+
+def test_list_alias_column_follows_the_active_profile():
+    import tbctl.aliases as aliases
+    from tbctl.cli import app
+
+    aliases.add("prod", "ruedi", "OX1-Y2HUZR")
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["-c", "test", "device", "list"])
+
+    assert result.exit_code == 0
+    assert "ruedi" not in result.output
+
+
+def test_list_shows_the_first_alias_when_a_device_has_several():
+    import tbctl.aliases as aliases
+    from tbctl.cli import app
+
+    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    aliases.add("default", "chef", "OX1-Y2HUZR")
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0
+    assert "chef" in result.output
+    assert "ruedi" not in result.output

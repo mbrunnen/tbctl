@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import typer
 
+import tbctl.aliases as aliases
 from tbctl.commands._client import (
     handle_api_error,
     parse_response,
@@ -92,7 +93,9 @@ def _plot(result) -> None:
 @app.command("keys")
 def list_keys(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     profile = ctx.obj["profile"]
@@ -111,7 +114,9 @@ def list_keys(
 @app.command("latest")
 def latest(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     keys: str = typer.Option(None, "--keys", "-k", help="Comma-separated telemetry keys."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
@@ -182,7 +187,9 @@ def _fetch_series(api, device_id, key, start_ms, end_ms, order):
 @app.command("history")
 def history(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     keys: str = typer.Option(..., "--keys", "-k", help="Comma-separated telemetry keys."),
     start: str = typer.Option(
         None, "--start", help="Start time: epoch ms, ISO date, or offset like 7d."

@@ -4,6 +4,7 @@ import re
 
 import typer
 
+import tbctl.aliases as aliases
 import tbctl.config as cfg
 
 _UUID_RE = re.compile(
@@ -123,7 +124,12 @@ def handle_api_error(e):
 
 
 def resolve_device_id(profile: str, device: str) -> str:
-    """Return a device UUID, resolving a device name via the tenant lookup."""
+    """Return a device UUID, resolving a local alias or a device name.
+
+    A local alias takes precedence over a device of the same name, so the
+    mapping the user configured always wins.
+    """
+    device = aliases.resolve(profile, device) or device
     if _UUID_RE.match(device):
         return device
     from tb_client.exceptions import ApiException

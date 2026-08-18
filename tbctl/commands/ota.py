@@ -4,6 +4,7 @@ from pathlib import Path
 
 import typer
 
+import tbctl.aliases as aliases
 from tbctl.commands._client import (
     _UUID_RE,
     _configuration,
@@ -442,7 +443,13 @@ def download_package(
     device_profile: str = typer.Option(
         None, "--device-profile", "-p", help="Resolve via device profile name or UUID."
     ),
-    device: str = typer.Option(None, "--device", "-D", help="Resolve via device name or UUID."),
+    device: str = typer.Option(
+        None,
+        "--device",
+        "-D",
+        help="Resolve via device name or UUID.",
+        autocompletion=aliases.complete_device,
+    ),
     name: str = typer.Option(None, "--name", "-n", help="Resolve by OTA package title."),
     version: str = typer.Option(None, "--version", "-v", help="Specific package version."),
     latest: bool = typer.Option(False, "--latest", help="Newest version (with --name)."),
@@ -494,7 +501,9 @@ def delete_package(
 def assign_package(
     ctx: typer.Context,
     package: str = typer.Argument(help="OTA package UUID or title."),
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     version: str = typer.Option(None, "--version", "-v", help="Package version (with a title)."),
     latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
@@ -545,7 +554,9 @@ def assign_package(
 @app.command("unassign")
 def unassign_package(
     ctx: typer.Context,
-    device: str = typer.Argument(help="Device UUID or name."),
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
     type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
 ):
     pkg_type = type.upper()
