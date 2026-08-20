@@ -5,10 +5,13 @@ import typer
 
 import tbctl.aliases as aliases
 from tbctl.commands._client import (
+    _UUID_RE,
     _save_device_raw,
     device_api,
     handle_api_error,
+    kv_table,
     owner_api,
+    profile_name_map,
     raw_get,
     raw_json,
     resolve_device_id,
@@ -38,6 +41,17 @@ def _alias_by_device(profile: str) -> dict[str, str]:
     return result
 
 
+def _profile_name(api, device_profile):
+    """Map a device-profile UUID to its name; ThingsBoard filters by name only."""
+    if not device_profile or not _UUID_RE.match(device_profile):
+        return device_profile
+    name = profile_name_map(api).get(device_profile)
+    if name is None:
+        typer.echo(f"Device profile '{device_profile}' not found.", err=True)
+        raise typer.Exit(1)
+    return name
+
+
 def _device_access_token(api, device_id):
     try:
         return api.get_device_credentials_by_device_id(device_id=device_id).credentials_id
@@ -59,7 +73,9 @@ def list_devices(
     ctx: typer.Context,
     page_size: int = typer.Option(20, "--page-size", help="Devices per page."),
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on name."),
-    type: str = typer.Option(None, "--type", "-t", help="Filter by device profile name."),
+    device_profile: str = typer.Option(
+        None, "-p", "--device-profile", help="Filter by device profile name or UUID."
+    ),
     customer: str = typer.Option(
         None, "--customer", "-C", help="Only devices owned by this customer UUID."
     ),
@@ -70,6 +86,7 @@ def list_devices(
 ):
     alias_of = _alias_by_device(ctx.obj["profile"])
     api = device_api(ctx.obj["profile"])
+    type = _profile_name(api, device_profile)
     try:
         if customer:
             response = api.get_customer_devices_without_preload_content(
@@ -200,6 +217,7 @@ def get_device(
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)
@@ -209,7 +227,20 @@ def get_device(
         data = raw_json(response)
     except Exception as e:
         handle_api_error(e)
-    typer.echo(json.dumps(data, indent=2))
+
+    if output_json:
+        typer.echo(json.dumps(data, indent=2))
+        return
+
+    kv_table(
+        [
+            ("ID", (data.get("id") or {}).get("id", "")),
+            ("Name", data.get("name")),
+            ("Type", data.get("type")),
+            ("Label", data.get("label")),
+            ("Created (UTC)", _fmt_ts(data.get("createdTime"))),
+        ]
+    )
 
 
 @app.command("create")
@@ -217,7 +248,9 @@ def create_device(
     ctx: typer.Context,
     name: str = typer.Argument(help="Unique device name."),
     label: str = typer.Option(None, "--label", help="Display label."),
-    profile: str = typer.Option("default", "-p", "--profile", help="Device profile name."),
+    profile: str = typer.Option(
+        "default", "-p", "--device-profile", help="Device profile name or UUID."
+    ),
 ):
     cfg_profile = ctx.obj["profile"]
     profile_id = resolve_profile_id(cfg_profile, profile)
@@ -242,7 +275,9 @@ def update_device(
     ),
     name: str = typer.Option(None, "--name", help="New device name."),
     label: str = typer.Option(None, "--label", help="New display label."),
-    profile: str = typer.Option(None, "-p", "--profile", help="New device profile name."),
+    profile: str = typer.Option(
+        None, "-p", "--device-profile", help="New device profile name or UUID."
+    ),
 ):
     cfg_profile = ctx.obj["profile"]
     device_id = resolve_device_id(cfg_profile, device)

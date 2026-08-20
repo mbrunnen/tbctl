@@ -1,3 +1,4 @@
+import json
 import tomllib
 
 import pytest
@@ -178,3 +179,17 @@ def test_show_flattens_nested_tables(config_dir):
 
     assert result.exit_code == 0
     assert "a.b.c = deep" in result.output
+
+
+def test_show_json(config_dir):
+    runner.invoke(app, ["config", "set-url", "https://example.com"])
+    runner.invoke(app, ["config", "set-token", "tb_abc123"])
+    result = runner.invoke(app, ["config", "show", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"url": "https://example.com", "token": "tb_abc123"}
+
+
+def test_show_json_empty(config_dir):
+    result = runner.invoke(app, ["config", "show", "-j"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {}

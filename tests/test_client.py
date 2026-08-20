@@ -8,6 +8,7 @@ from tbctl.commands._client import (
     make_api_client,
     parse_response,
     resolve_device_id,
+    resolve_profile_id,
 )
 
 
@@ -231,3 +232,12 @@ def test_resolve_device_id_uses_the_alias_table_of_the_active_profile(monkeypatc
 
     resolve_device_id("test", "ruedi")
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="ruedi")
+
+
+def test_resolve_profile_id_uuid_passthrough():
+    from unittest.mock import patch
+
+    uuid = "22222222-3333-4444-5555-666666666666"
+    with patch("tbctl.commands._client.device_api") as device_api:
+        assert resolve_profile_id("default", uuid) == uuid
+    device_api.assert_not_called()

@@ -143,11 +143,26 @@ def test_get():
     )
 
     with patch("tbctl.commands.device.device_api", return_value=mock_api):
-        result = runner.invoke(app, ["device", "get", DEVICE_UUID])
+        result = runner.invoke(app, ["device", "get", DEVICE_UUID, "--json"])
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {"name": "sensor-1"}
     mock_api.get_device_by_id_without_preload_content.assert_called_once_with(device_id=DEVICE_UUID)
+
+
+def test_get_renders_a_table_by_default():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(_device_dict())
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "get", DEVICE_UUID])
+
+    assert result.exit_code == 0
+    assert "sensor-1" in result.output
+    assert "Lobby" in result.output
+    assert not result.output.lstrip().startswith("{")
 
 
 def test_create_default_profile():
@@ -178,7 +193,7 @@ def test_create_resolves_named_profile():
         patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID) as resolve,
         patch("tbctl.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}),
     ):
-        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "custom"])
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--device-profile", "custom"])
 
     assert result.exit_code == 0
     resolve.assert_called_once_with("default", "custom")
@@ -212,7 +227,7 @@ def test_create_profile_not_found():
         patch("tbctl.commands._client.device_api", return_value=MagicMock()),
         patch("tbctl.commands._client.raw_get", return_value={"data": []}),
     ):
-        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "ghost"])
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--device-profile", "ghost"])
 
     assert result.exit_code == 1
     assert "not found" in result.stderr
@@ -231,7 +246,7 @@ def test_create_profile_ambiguous():
         patch("tbctl.commands._client.device_api", return_value=MagicMock()),
         patch("tbctl.commands._client.raw_get", return_value=page),
     ):
-        result = runner.invoke(app, ["device", "create", "sensor-1", "--profile", "dup"])
+        result = runner.invoke(app, ["device", "create", "sensor-1", "--device-profile", "dup"])
 
     assert result.exit_code == 1
     assert "ambiguous" in result.stderr
@@ -270,7 +285,7 @@ def test_update_profile_resolves():
         patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
         patch("tbctl.commands.device._save_device_raw") as save_raw,
     ):
-        result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--profile", "custom"])
+        result = runner.invoke(app, ["device", "update", DEVICE_UUID, "--device-profile", "custom"])
 
     assert result.exit_code == 0
     sent = save_raw.call_args.args[1]
@@ -530,3 +545,90 @@ def test_list_shows_the_first_alias_when_a_device_has_several():
     assert result.exit_code == 0
     assert "chef" in result.output
     assert "ruedi" not in result.output
+
+
+def test_create_takes_a_profile_uuid_without_a_lookup():
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands._client.raw_get") as raw_get,
+        patch(
+            "tbctl.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}
+        ) as save_raw,
+    ):
+        result = runner.invoke(
+            app, ["device", "create", "sensor-1", "--device-profile", PROFILE_UUID]
+        )
+
+    assert result.exit_code == 0
+    assert save_raw.call_args.args[1]["deviceProfileId"]["id"] == PROFILE_UUID
+    raw_get.assert_not_called()
+
+
+def test_update_takes_a_profile_uuid_without_a_lookup():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
+        {"id": {"id": DEVICE_UUID}, "name": "sensor-1"}
+    )
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands._client.raw_get") as raw_get,
+        patch("tbctl.commands.device._save_device_raw") as save_raw,
+    ):
+        result = runner.invoke(app, ["device", "update", DEVICE_UUID, "-p", PROFILE_UUID])
+
+    assert result.exit_code == 0
+    assert save_raw.call_args.args[1]["deviceProfileId"]["id"] == PROFILE_UUID
+    raw_get.assert_not_called()
+
+
+def test_list_filters_by_device_profile_name():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list", "--device-profile", "Sensor-V1"])
+
+    assert result.exit_code == 0
+    kwargs = mock_api.get_tenant_devices_without_preload_content.call_args.kwargs
+    assert kwargs["type"] == "Sensor-V1"
+
+
+def test_list_maps_a_device_profile_uuid_to_its_name():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device.profile_name_map", return_value={PROFILE_UUID: "Sensor-V1"}),
+    ):
+        result = runner.invoke(app, ["device", "list", "-p", PROFILE_UUID])
+
+    assert result.exit_code == 0
+    kwargs = mock_api.get_tenant_devices_without_preload_content.call_args.kwargs
+    assert kwargs["type"] == "Sensor-V1"
+
+
+def test_list_rejects_an_unknown_device_profile_uuid():
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.profile_name_map", return_value={}),
+    ):
+        result = runner.invoke(app, ["device", "list", "-p", PROFILE_UUID])
+
+    assert result.exit_code == 1
+    assert "not found" in result.stderr

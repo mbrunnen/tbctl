@@ -67,6 +67,7 @@ The individual commands are also available:
 tbctl config set-url https://thingsboard.example.com
 tbctl config set-token <api-token>
 tbctl config show
+tbctl config show --json
 ```
 
 Multiple config profiles are supported via `--config <name>` / `-c` (default: `default`).
@@ -83,6 +84,7 @@ tbctl ota list --device-profile sensor-v2 --type FIRMWARE
 tbctl ota list --json
 
 tbctl ota get <uuid>
+tbctl ota get <uuid> --json
 tbctl ota delete <uuid>
 
 tbctl ota upload firmware.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
@@ -105,14 +107,15 @@ tbctl ota unassign thermostat-01                            # clear the device's
 tbctl ota unassign thermostat-01 --type SOFTWARE
 
 tbctl device list
-tbctl device list --search sensor --type default --sort-by createdTime --sort-order DESC
+tbctl device list --search sensor --device-profile default --sort-by createdTime --sort-order DESC
 tbctl device list --customer <customer-uuid> --token   # devices of a customer, with access tokens
 tbctl device list --json
 tbctl device profiles                                  # list device profiles
 tbctl device profiles --search sensor --json
 tbctl device get <device>
-tbctl device create sensor-1 --profile default --label Lobby
-tbctl device update sensor-1 --label "Main hall" --profile thermostat
+tbctl device get <device> --json
+tbctl device create sensor-1 --device-profile default --label Lobby
+tbctl device update sensor-1 --label "Main hall" --device-profile thermostat
 tbctl device delete sensor-1 --yes
 tbctl device assign sensor-1 --customer <customer-uuid>
 
@@ -137,6 +140,11 @@ tbctl attributes get <device> --scope SERVER_SCOPE --keys fwVersion
 `<device>` accepts a device UUID, a device name, or a local alias. Name
 resolution needs an API token with tenant device-read permission; otherwise pass
 the UUID directly.
+
+`-p/--device-profile` means the same thing on every command that takes one
+(`ota list|upload|download`, `device list|create|update`) and accepts a device
+profile name or a UUID. Every read command prints a table by default and JSON
+with `-j/--json`.
 
 `tbctl alias` stores free-text names for devices in the active config profile
 (`~/.config/tbctl/<profile>.toml`, one `[aliases.<alias>]` table per alias with a

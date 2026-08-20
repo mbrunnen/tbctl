@@ -213,6 +213,9 @@ def raw_post(api, resource_path, body):
 
 
 def resolve_profile_id(profile: str, name: str) -> str:
+    """Return the device-profile UUID for a UUID, a name, or ``default``."""
+    if _UUID_RE.match(name):
+        return name
     api = device_api(profile)
     try:
         if name == "default":
@@ -233,6 +236,19 @@ def resolve_profile_id(profile: str, name: str) -> str:
         typer.echo(f"Device profile '{name}' is ambiguous ({len(matches)} matches).", err=True)
         raise typer.Exit(1)
     return matches[0]["id"]["id"]
+
+
+def kv_table(rows) -> None:
+    """Print ``[(field, value)]`` as a two-column table."""
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Field")
+    table.add_column("Value")
+    for field, value in rows:
+        table.add_row(field, "" if value is None else str(value))
+    Console().print(table)
 
 
 def profile_name_map(api):

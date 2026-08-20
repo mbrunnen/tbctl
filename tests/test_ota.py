@@ -59,7 +59,21 @@ def test_list_empty():
     assert "No OTA packages found" in result.output
 
 
-def test_get():
+def test_get_renders_a_table_by_default():
+    mock_api = MagicMock()
+    mock_api.get_ota_package_info_by_id.return_value = _mock_package()
+
+    with patch("tbctl.commands.ota._get_api", return_value=mock_api):
+        result = runner.invoke(app, ["ota", "get", "abc-123"])
+
+    assert result.exit_code == 0
+    mock_api.get_ota_package_info_by_id.assert_called_once_with(ota_package_id="abc-123")
+    output = _strip_ansi(result.output)
+    assert "Firmware 1.0" in output
+    assert not output.lstrip().startswith("{")
+
+
+def test_get_json():
     mock_api = MagicMock()
     mock_api.get_ota_package_info_by_id.return_value.to_dict.return_value = {
         "title": "Firmware 1.0",
@@ -67,10 +81,10 @@ def test_get():
     }
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "get", "abc-123"])
+        result = runner.invoke(app, ["ota", "get", "abc-123", "--json"])
 
     assert result.exit_code == 0
-    mock_api.get_ota_package_info_by_id.assert_called_once_with(ota_package_id="abc-123")
+    assert json.loads(result.output) == {"title": "Firmware 1.0", "version": "1.0"}
 
 
 def test_delete():

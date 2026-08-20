@@ -11,6 +11,7 @@ from tbctl.commands._client import (
     _save_device_raw,
     device_api,
     handle_api_error,
+    kv_table,
     profile_name_map,
     raw_get,
     raw_post,
@@ -74,11 +75,7 @@ def list_packages(
 
     device_profile_id = None
     if device_profile:
-        device_profile_id = (
-            device_profile
-            if _UUID_RE.match(device_profile)
-            else resolve_profile_id(cfg_profile, device_profile)
-        )
+        device_profile_id = resolve_profile_id(cfg_profile, device_profile)
 
     types = ([type] if type else ["FIRMWARE", "SOFTWARE"]) if device_profile_id else None
 
@@ -231,11 +228,7 @@ def upload_package(
 
     profile_id = None
     if device_profile:
-        profile_id = (
-            device_profile
-            if _UUID_RE.match(device_profile)
-            else resolve_profile_id(cfg_profile, device_profile)
-        )
+        profile_id = resolve_profile_id(cfg_profile, device_profile)
 
     algorithm = checksum_algorithm.upper()
     data = None
@@ -289,13 +282,33 @@ def upload_package(
 
 
 @app.command("get")
-def get_package(ctx: typer.Context, id: str = typer.Argument(help="OTA package UUID.")):
+def get_package(
+    ctx: typer.Context,
+    id: str = typer.Argument(help="OTA package UUID."),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+):
     api = _get_api(ctx.obj["profile"])
     try:
         pkg = api.get_ota_package_info_by_id(ota_package_id=id)
     except Exception as e:
         handle_api_error(e)
-    typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
+
+    if output_json:
+        typer.echo(json.dumps(pkg.to_dict(), indent=2, default=str))
+        return
+
+    dp = getattr(pkg, "device_profile_id", None)
+    dp_id = str(dp.id) if dp is not None else None
+    kv_table(
+        [
+            ("ID", str(pkg.id.id) if pkg.id is not None else ""),
+            ("Title", pkg.title),
+            ("Version", pkg.version),
+            ("Type", pkg.type),
+            ("Device Profile", profile_name_map(api).get(dp_id, dp_id) if dp_id else "-"),
+            ("Size", _format_size(getattr(pkg, "data_size", None))),
+        ]
+    )
 
 
 def _validate_selectors(package_id, device_profile, device, name, version, latest):
@@ -364,11 +377,7 @@ def _resolve_package_info(
         except Exception as e:
             handle_api_error(e)
     if device_profile:
-        profile_id = (
-            device_profile
-            if _UUID_RE.match(device_profile)
-            else resolve_profile_id(cfg_profile, device_profile)
-        )
+        profile_id = resolve_profile_id(cfg_profile, device_profile)
         if version:
             candidates = _packages_for_profile(api, profile_id, pkg_type)
             return api, _select_from_candidates(candidates, version, f"profile '{device_profile}'")

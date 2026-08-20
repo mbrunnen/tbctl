@@ -1,3 +1,5 @@
+import json
+
 import typer
 
 import tbctl.config as cfg
@@ -73,11 +75,17 @@ def set_token(ctx: typer.Context, token: str = typer.Argument(help="API token.")
 
 
 @app.command("show")
-def show(ctx: typer.Context):
+def show(
+    ctx: typer.Context,
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+):
     profile = ctx.obj["profile"]
     data = cfg.load(profile)
     if not data:
-        typer.echo(f"No configuration found for profile '{profile}'.")
+        typer.echo("{}" if output_json else f"No configuration found for profile '{profile}'.")
+        return
+    if output_json:
+        typer.echo(json.dumps(data, indent=2))
         return
     for key, value in _flatten(data):
         typer.echo(f"{key} = {value}")
