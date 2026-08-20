@@ -195,7 +195,11 @@ def history(
         None, "--start", help="Start time: epoch ms, ISO date, or offset like 7d."
     ),
     end: str = typer.Option(None, "--end", help="End time: epoch ms or ISO date (default: now)."),
-    last: str = typer.Option(None, "--last", help="Window ending now, e.g. 7d, 24h, 30m."),
+    last: str = typer.Option(
+        None,
+        "--last",
+        help="Window ending now, e.g. 7d, 24h, 30m; a bare count means the newest N points.",
+    ),
     limit: int = typer.Option(
         None, "--limit", help="Max data points per key (default: fetch the full window)."
     ),
@@ -210,7 +214,21 @@ def history(
         raise typer.Exit(1)
 
     now_ms = _now_ms()
-    if last:
+    count = None
+    if last and last.strip().isdigit():
+        count = int(last)
+        if count < 1:
+            typer.echo("--last needs a positive count, e.g. --last 20.", err=True)
+            raise typer.Exit(1)
+        if limit is not None or agg:
+            typer.echo(
+                f"--last {count} already asks for the {count} newest points and cannot be "
+                "combined with --limit or --agg; pass a window like 20d instead.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        start_ms, end_ms = 0, now_ms
+    elif last:
         start_ms = _parse_time(last, now_ms)
         end_ms = now_ms
     else:
@@ -224,7 +242,24 @@ def history(
     device_id = resolve_device_id(profile, device)
     api = telemetry_api(profile)
     try:
-        if limit is None and not agg:
+        if count:
+            # Ask the server for the tail, then restore the requested display order.
+            result = parse_response(
+                api.get_timeseries(
+                    "DEVICE",
+                    device_id,
+                    start_ms,
+                    end_ms,
+                    {},
+                    keys=keys,
+                    limit=str(count),
+                    order_by="DESC",
+                )
+            )
+            if order.upper() != "DESC":
+                for key in result:
+                    (result[key] or []).reverse()
+        elif limit is None and not agg:
             result = {}
             for key in (k.strip() for k in keys.split(",") if k.strip()):
                 points = _fetch_series(api, device_id, key, start_ms, end_ms, order)

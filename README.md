@@ -126,6 +126,7 @@ tbctl telemetry latest ruedi --keys temperature   # aliases work as <device>
 tbctl telemetry keys <device>
 tbctl telemetry latest <device> --keys temperature,humidity
 tbctl telemetry history <device> --keys temperature --last 24h
+tbctl telemetry history <device> --keys temperature --last 20   # the 20 newest points
 tbctl telemetry history <device> --keys temperature --start 2026-06-01 --end 2026-06-25
 tbctl telemetry history <device> --keys temperature --last 7d --plot
 

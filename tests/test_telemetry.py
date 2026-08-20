@@ -238,6 +238,89 @@ def test_history_requires_start_or_last():
     api.get_timeseries.assert_not_called()
 
 
+_TWO_POINTS_DESC = (
+    "{'temperature': ["
+    "{'ts': 1700000060000, 'value': '21.6'}, "
+    "{'ts': 1700000000000, 'value': '21.5'}]}"
+)
+
+
+def test_history_last_without_unit_fetches_the_newest_points():
+    api = MagicMock()
+    api.get_timeseries.return_value = _TWO_POINTS_DESC
+
+    result = _invoke(["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "20"], api)
+
+    assert result.exit_code == 0
+    args, kwargs = api.get_timeseries.call_args
+    # the whole series is in scope; the count alone bounds the result
+    assert args[2] == 0
+    assert kwargs["limit"] == "20"
+    assert kwargs["order_by"] == "DESC"
+    assert "may be truncated" not in result.output.lower()
+    # fetched newest-first, displayed oldest-first like every other window
+    assert result.output.index("21.5") < result.output.index("21.6")
+
+
+def test_history_last_without_unit_respects_desc_order():
+    api = MagicMock()
+    api.get_timeseries.return_value = _TWO_POINTS_DESC
+
+    result = _invoke(
+        [
+            "telemetry",
+            "history",
+            DEVICE,
+            "--keys",
+            "temperature",
+            "--last",
+            "20",
+            "--order",
+            "DESC",
+        ],
+        api,
+    )
+
+    assert result.exit_code == 0
+    assert result.output.index("21.6") < result.output.index("21.5")
+
+
+def test_history_last_count_rejects_limit():
+    api = MagicMock()
+
+    result = _invoke(
+        ["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "20", "--limit", "5"],
+        api,
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output
+    api.get_timeseries.assert_not_called()
+
+
+def test_history_last_count_rejects_agg():
+    api = MagicMock()
+
+    result = _invoke(
+        ["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "20", "--agg", "AVG"],
+        api,
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output
+    api.get_timeseries.assert_not_called()
+
+
+def test_history_last_count_rejects_zero():
+    api = MagicMock()
+
+    result = _invoke(["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "0"], api)
+
+    assert result.exit_code != 0
+    assert "positive count" in result.output
+    api.get_timeseries.assert_not_called()
+
+
 def test_keys_api_exception():
     from tb_client.exceptions import ApiException
 
