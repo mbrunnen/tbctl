@@ -464,6 +464,23 @@ def test_list_shows_an_alias_column():
     assert "ruedi" in result.output
 
 
+def test_list_matches_an_alias_by_uuid_when_the_device_was_renamed():
+    import tbctl.aliases as aliases
+    from tbctl.cli import app
+
+    aliases.add("default", "ruedi", "OX1-OLDNAME", DEVICE_UUID)
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict(name="OX1-NEWNAME")], "totalElements": 1}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0
+    assert "ruedi" in result.output
+
+
 def test_list_omits_the_alias_column_without_aliases():
     from tbctl.cli import app
 

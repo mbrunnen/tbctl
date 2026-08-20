@@ -1,5 +1,6 @@
 import tomllib
 
+import pytest
 from typer.testing import CliRunner
 
 import tbctl.config as cfg
@@ -140,18 +141,33 @@ def test_init_profile(config_dir, monkeypatch):
         assert tomllib.load(f)["url"] == "https://staging.example.com"
 
 
+def test_save_keeps_the_previous_file_when_writing_fails(config_dir, monkeypatch):
+    cfg.save({"url": "https://example.com"}, "default")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("tbctl.config.tomli_w.dump", boom)
+    with pytest.raises(RuntimeError):
+        cfg.save({"url": "https://broken.example"}, "default")
+
+    assert cfg.load("default") == {"url": "https://example.com"}
+    assert sorted(p.name for p in config_dir.iterdir()) == ["default.toml"]
+
+
 def test_show_flattens_the_alias_table(config_dir):
     import tbctl.aliases as aliases
 
     runner.invoke(app, ["config", "set-url", "https://example.com"])
-    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    aliases.add("default", "ruedi", "OX1-Y2HUZR", "b1f2c3d4-1111-2222-3333-444455556666")
     aliases.add("default", "horst", "OX1-1T6570")
 
     result = runner.invoke(app, ["config", "show"])
 
     assert result.exit_code == 0
-    assert "aliases.ruedi = OX1-Y2HUZR" in result.output
-    assert "aliases.horst = OX1-1T6570" in result.output
+    assert "aliases.ruedi.name = OX1-Y2HUZR" in result.output
+    assert "aliases.ruedi.id = b1f2c3d4-1111-2222-3333-444455556666" in result.output
+    assert "aliases.horst.name = OX1-1T6570" in result.output
     assert "{" not in result.output
 
 

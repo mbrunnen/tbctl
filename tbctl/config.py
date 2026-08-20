@@ -1,3 +1,4 @@
+import os
 import tomllib
 from pathlib import Path
 
@@ -25,7 +26,17 @@ def load(profile: str = "default") -> dict:
 
 
 def save(data: dict, profile: str = "default") -> None:
+    """Write a profile atomically, so a failed write cannot lose the old one.
+
+    The alias migration writes from a read path, which shell completion also
+    reaches, so two processes may save at the same time.
+    """
     path = _path(profile)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as f:
-        tomli_w.dump(data, f)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        with open(tmp, "wb") as f:
+            tomli_w.dump(data, f)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)

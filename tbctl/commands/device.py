@@ -25,10 +25,16 @@ def _fmt_ts(ms) -> str:
 
 
 def _alias_by_device(profile: str) -> dict[str, str]:
-    """Invert the alias table for display; the first alias per device wins."""
+    """Invert the alias table for display; the first alias per device wins.
+
+    Keyed by device name and by UUID, so an alias still shows up after the
+    device has been renamed on the server.
+    """
     result = {}
-    for alias, target in sorted(aliases.load(profile).items()):
-        result.setdefault(target, alias)
+    for alias, entry in sorted(aliases.load(profile).items()):
+        result.setdefault(entry.name, alias)
+        if entry.id:
+            result.setdefault(entry.id, alias)
     return result
 
 
@@ -119,7 +125,7 @@ def list_devices(
             d.get("name") or "",
         ]
         if alias_of:
-            row.append(alias_of.get(d.get("name"), ""))
+            row.append(alias_of.get(d.get("name")) or alias_of.get(row[0], ""))
         row += [
             d.get("type") or "",
             d.get("label") or "",

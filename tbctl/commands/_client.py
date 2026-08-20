@@ -7,9 +7,7 @@ import typer
 import tbctl.aliases as aliases
 import tbctl.config as cfg
 
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
-)
+_UUID_RE = aliases.UUID_RE
 
 _URI_TEMPLATE_RE = re.compile(r"\{\?[^}]*\}")
 
@@ -127,10 +125,15 @@ def resolve_device_id(profile: str, device: str) -> str:
     """Return a device UUID, resolving a local alias or a device name.
 
     A local alias takes precedence over a device of the same name, so the
-    mapping the user configured always wins.
+    mapping the user configured always wins. An alias that carries the device's
+    UUID skips the name lookup, which needs tenant device-read permission.
     """
-    device = aliases.resolve(profile, device) or device
-    if _UUID_RE.match(device):
+    alias = aliases.resolve(profile, device)
+    if alias:
+        if alias.id:
+            return alias.id
+        device = alias.name
+    if aliases.UUID_RE.match(device):
         return device
     from tb_client.exceptions import ApiException
 
