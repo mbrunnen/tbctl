@@ -185,6 +185,32 @@ to `FIRMWARE`; with a title, the newest version is used unless `--version` is
 given. `tbctl ota unassign` clears the device's `--type` assignment (default
 `FIRMWARE`).
 
+## Claude Code skill
+
+`skills/tbctl/` is a [Claude Code](https://claude.ai/code) skill that teaches an
+agent how to drive this CLI: the command surface, which selectors are mutually
+exclusive, and why `--json` matters for anything that gets parsed.
+
+Install it for your user by linking it into the personal skills directory, so a
+`git pull` keeps it current:
+
+```sh
+mkdir -p ~/.claude/skills
+ln -s "$PWD/skills/tbctl" ~/.claude/skills/tbctl
+```
+
+Codex, Copilot CLI, and Gemini CLI read `~/.agents/skills/` instead:
+
+```sh
+mkdir -p ~/.agents/skills
+ln -s "$PWD/skills/tbctl" ~/.agents/skills/tbctl
+```
+
+To scope it to a single project rather than your user, link it into that
+project's `.claude/skills/` instead. Either way the agent loads the skill on
+its own once a task mentions ThingsBoard, OTA packages, or telemetry; no slash
+command needed.
+
 ## Development
 
 ```sh
