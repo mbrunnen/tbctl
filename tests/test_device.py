@@ -165,6 +165,37 @@ def test_get_renders_a_table_by_default():
     assert not result.output.lstrip().startswith("{")
 
 
+def test_get_with_token():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(_device_dict())
+    mock_api.get_device_credentials_by_device_id.return_value.credentials_id = "TOK123"
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        as_json = runner.invoke(app, ["device", "get", DEVICE_UUID, "--token", "--json"])
+        as_table = runner.invoke(app, ["device", "get", DEVICE_UUID, "--token"])
+
+    assert as_json.exit_code == 0
+    assert json.loads(as_json.output)["accessToken"] == "TOK123"
+    assert as_table.exit_code == 0
+    assert "TOK123" in as_table.output
+    mock_api.get_device_credentials_by_device_id.assert_called_with(device_id=DEVICE_UUID)
+
+
+def test_get_omits_token_by_default():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(_device_dict())
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "get", DEVICE_UUID, "--json"])
+
+    assert "accessToken" not in json.loads(result.output)
+    mock_api.get_device_credentials_by_device_id.assert_not_called()
+
+
 def test_create_default_profile():
     from tbctl.cli import app
 

@@ -217,6 +217,7 @@ def get_device(
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
+    token: bool = typer.Option(False, "--token", help="Include the device's access token."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     cfg_profile = ctx.obj["profile"]
@@ -228,19 +229,23 @@ def get_device(
     except Exception as e:
         handle_api_error(e)
 
+    if token:
+        data["accessToken"] = _device_access_token(api, device_id)
+
     if output_json:
         typer.echo(json.dumps(data, indent=2))
         return
 
-    kv_table(
-        [
-            ("ID", (data.get("id") or {}).get("id", "")),
-            ("Name", data.get("name")),
-            ("Type", data.get("type")),
-            ("Label", data.get("label")),
-            ("Created (UTC)", _fmt_ts(data.get("createdTime"))),
-        ]
-    )
+    rows = [
+        ("ID", (data.get("id") or {}).get("id", "")),
+        ("Name", data.get("name")),
+        ("Type", data.get("type")),
+        ("Label", data.get("label")),
+        ("Created (UTC)", _fmt_ts(data.get("createdTime"))),
+    ]
+    if token:
+        rows.append(("Access token", data["accessToken"]))
+    kv_table(rows)
 
 
 @app.command("create")

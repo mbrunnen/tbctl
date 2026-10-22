@@ -114,6 +114,7 @@ tbctl device profiles                                  # list device profiles
 tbctl device profiles --search sensor --json
 tbctl device get <device>
 tbctl device get <device> --json
+tbctl device get <device> --token                      # include the access token
 tbctl device create sensor-1 --device-profile default --label Lobby
 tbctl device update sensor-1 --label "Main hall" --device-profile thermostat
 tbctl device delete sensor-1 --yes
