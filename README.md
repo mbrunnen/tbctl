@@ -155,9 +155,9 @@ same name, and matches case-insensitively. `--id` stores the device UUID
 alongside the name, which is what makes the alias work with a token that lacks
 tenant device-read permission: resolving then needs no name lookup. `alias add`
 replaces the whole entry, so repeating it without `--id` drops a stored UUID.
-Aliases written by earlier versions are migrated on first use. Shell completion
-suggests the aliases of the active profile, and `tbctl device list` gains an
-`Alias` column while the profile has any, matched by device name or UUID.
+Shell completion suggests the aliases of the active profile, and `tbctl device
+list` gains an `Alias` column while the profile has any, matched by device name
+or UUID.
 
 `tbctl ota upload` creates a package from exactly one source: a local file
 argument or `--url` for an externally hosted package. `--title`, `--version`,

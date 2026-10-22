@@ -269,34 +269,7 @@ def test_resolve_returns_the_entry(config_dir):
     assert aliases.resolve("default", "ruedi") == aliases.Alias("OX1-Y2HUZR", UUID_A)
 
 
-def test_load_migrates_a_legacy_string_entry(config_dir):
-    cfg.save({"aliases": {"ruedi": "OX1-Y2HUZR"}}, "default")
-    assert aliases.load("default") == {"ruedi": aliases.Alias("OX1-Y2HUZR")}
-    assert cfg.load("default")["aliases"] == {"ruedi": {"name": "OX1-Y2HUZR"}}
-
-
-def test_load_migrates_a_legacy_uuid_target_into_the_name(config_dir):
-    cfg.save({"aliases": {"ruedi": UUID_A}}, "default")
-    assert aliases.load("default") == {"ruedi": aliases.Alias(UUID_A)}
-
-
-def test_migration_keeps_url_and_token(config_dir):
-    cfg.save(
-        {"url": "https://tb.example", "token": "secret", "aliases": {"ruedi": "OX1-Y2HUZR"}},
-        "prod",
-    )
-    aliases.load("prod")
-    data = cfg.load("prod")
-    assert data["url"] == "https://tb.example"
-    assert data["token"] == "secret"
-    assert data["aliases"] == {"ruedi": {"name": "OX1-Y2HUZR"}}
-
-
-def test_load_does_not_rewrite_an_already_migrated_file(config_dir, monkeypatch):
+def test_load_does_not_write(config_dir, monkeypatch):
     aliases.add("default", "ruedi", "OX1-Y2HUZR", UUID_A)
-
-    def refuse(*args, **kwargs):
-        raise AssertionError("load must not write an already migrated file")
-
-    monkeypatch.setattr(cfg, "save", refuse)
+    monkeypatch.setattr(cfg, "save", lambda *a, **k: pytest.fail("load must not write"))
     assert aliases.load("default") == {"ruedi": aliases.Alias("OX1-Y2HUZR", UUID_A)}

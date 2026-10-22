@@ -26,11 +26,7 @@ def load(profile: str = "default") -> dict:
 
 
 def save(data: dict, profile: str = "default") -> None:
-    """Write a profile atomically, so a failed write cannot lose the old one.
-
-    The alias migration writes from a read path, which shell completion also
-    reaches, so two processes may save at the same time.
-    """
+    """Write a profile atomically, so a failed write cannot lose the old one."""
     path = _path(profile)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".{os.getpid()}.tmp")

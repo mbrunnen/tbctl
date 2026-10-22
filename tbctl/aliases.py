@@ -24,10 +24,7 @@ class Alias(NamedTuple):
     id: str | None = None
 
 
-def _entry(value) -> Alias:
-    """Read one stored alias, accepting the older plain-string form."""
-    if isinstance(value, str):
-        return Alias(value)
+def _entry(value: dict) -> Alias:
     return Alias(value["name"], value.get("id"))
 
 
@@ -44,16 +41,7 @@ def _table(data: dict) -> dict[str, Alias]:
 
 
 def load(profile: str = "default") -> dict[str, Alias]:
-    """Return the profile's aliases, migrating older string entries on the way.
-
-    A migration writes the converted table back once, so every later read and
-    every other tbctl version sees a single format.
-    """
-    data = cfg.load(profile)
-    table = _table(data)
-    if any(isinstance(value, str) for value in data.get("aliases", {}).values()):
-        _save(data, table, profile)
-    return table
+    return _table(cfg.load(profile))
 
 
 def _save(data: dict, table: dict[str, Alias], profile: str) -> None:
