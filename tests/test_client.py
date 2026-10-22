@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+import tbctl.config as cfg
 from tbctl.commands._client import (
     check_connection,
     handle_api_error,
@@ -241,3 +242,48 @@ def test_resolve_profile_id_uuid_passthrough():
     with patch("tbctl.commands._client.device_api") as device_api:
         assert resolve_profile_id("default", uuid) == uuid
     device_api.assert_not_called()
+
+
+def _ota_list():
+    from typer.testing import CliRunner
+
+    from tbctl.cli import app
+
+    return CliRunner().invoke(app, ["ota", "list"])
+
+
+def test_missing_token_names_set_token_and_env(config_dir):
+    cfg.save({"url": "https://tb.example"}, "default")
+    result = _ota_list()
+    assert result.exit_code != 0
+    assert "config set-token" in result.stderr
+    assert "TBCTL_TOKEN" in result.stderr
+
+
+def test_missing_token_without_backend_is_clean(config_dir, no_keyring):
+    cfg.save({"url": "https://tb.example"}, "default")
+    result = _ota_list()
+    assert result.exit_code != 0
+    assert "TBCTL_TOKEN" in result.stderr
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_token_from_env_builds_client(config_dir, monkeypatch):
+    cfg.save({"url": "https://tb.example"}, "default")
+    monkeypatch.setenv("TBCTL_TOKEN", "env-tok")
+    calls = []
+
+    def fake_build(url, token):
+        calls.append((url, token))
+        raise SystemExit(0)
+
+    monkeypatch.setattr("tbctl.commands._client.build_client", fake_build)
+    _ota_list()
+    assert calls == [("https://tb.example", "env-tok")]
+
+
+def test_plaintext_token_in_toml_is_not_used(config_dir):
+    cfg.save({"url": "https://tb.example", "token": "old"}, "default")
+    result = _ota_list()
+    assert result.exit_code != 0
+    assert "No API token for profile 'default'" in result.stderr

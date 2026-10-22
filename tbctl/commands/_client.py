@@ -6,6 +6,7 @@ import typer
 
 import tbctl.aliases as aliases
 import tbctl.config as cfg
+import tbctl.credentials as credentials
 
 _UUID_RE = aliases.UUID_RE
 
@@ -46,11 +47,20 @@ def _configuration(profile: str):
         raise typer.Exit(1)
 
     conf = cfg.load(profile)
-    if not conf.get("url") or not conf.get("token"):
+    if not conf.get("url"):
         typer.echo(f"Profile '{profile}' not configured. Run `tbctl config init`.", err=True)
         raise typer.Exit(1)
 
-    return build_client(conf["url"], conf["token"])
+    token = credentials.get(profile)
+    if not token:
+        typer.echo(
+            f"No API token for profile '{profile}'. Run `tbctl config set-token`, "
+            "or set TBCTL_TOKEN where no Secret Service is available.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    return build_client(conf["url"], token)
 
 
 def check_connection(url: str, token: str) -> tuple[bool, str]:

@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 
 import tbctl.config as cfg
+import tbctl.credentials as credentials
 from tbctl.cli import app, complete_profile
 
 runner = CliRunner()
@@ -46,8 +47,14 @@ def test_set_url_profile(config_dir):
 def test_set_token(config_dir):
     result = runner.invoke(app, ["config", "set-token", "tb_abc123"])
     assert result.exit_code == 0
-    with open(config_dir / "default.toml", "rb") as f:
-        assert tomllib.load(f)["token"] == "tb_abc123"
+    assert credentials.stored("default") == "tb_abc123"
+    assert not (config_dir / "default.toml").exists()
+
+
+def test_set_token_without_backend(config_dir, no_keyring):
+    result = runner.invoke(app, ["config", "set-token", "tb_abc123"])
+    assert result.exit_code == 1
+    assert "TBCTL_TOKEN" in result.stderr
 
 
 def test_show_empty(config_dir):
@@ -63,7 +70,15 @@ def test_show(config_dir):
     result = runner.invoke(app, ["config", "show"])
     assert result.exit_code == 0
     assert "https://example.com" in result.output
-    assert "tb_abc123" in result.output
+    assert "token = keyring" in result.output
+    assert "tb_abc123" not in result.output
+
+
+def test_show_reports_env_source(config_dir, monkeypatch):
+    runner.invoke(app, ["config", "set-url", "https://example.com"])
+    monkeypatch.setenv("TBCTL_TOKEN", "x")
+    result = runner.invoke(app, ["config", "show"])
+    assert "token = TBCTL_TOKEN" in result.output
 
 
 def test_show_profile_isolation(config_dir):
@@ -85,8 +100,8 @@ def test_init_writes_config(config_dir, monkeypatch):
     assert result.exit_code == 0
     with open(config_dir / "default.toml", "rb") as f:
         data = tomllib.load(f)
-    assert data["url"] == "https://example.com"
-    assert data["token"] == "secret-token"
+    assert data == {"url": "https://example.com"}
+    assert credentials.stored("default") == "secret-token"
     assert "Connection OK" in result.output
     assert "me@example.com" in result.output
 
@@ -107,7 +122,7 @@ def test_init_keeps_existing_token_on_empty(config_dir, monkeypatch):
     with open(config_dir / "default.toml", "rb") as f:
         data = tomllib.load(f)
     assert data["url"] == "https://new.example.com"
-    assert data["token"] == "old-token"
+    assert credentials.stored("default") == "old-token"
 
 
 def test_init_url_default_prefill(config_dir, monkeypatch):
@@ -128,8 +143,16 @@ def test_init_saves_despite_validation_failure(config_dir, monkeypatch):
     result = runner.invoke(app, ["config", "init"], input="https://example.com\nbad-token\n")
     assert result.exit_code == 0
     assert "Warning" in result.output
-    with open(config_dir / "default.toml", "rb") as f:
-        assert tomllib.load(f)["token"] == "bad-token"
+    assert credentials.stored("default") == "bad-token"
+    assert cfg.load("default") == {"url": "https://example.com"}
+
+
+def test_init_without_backend_writes_nothing(config_dir, monkeypatch, no_keyring):
+    _ok(monkeypatch)
+    result = runner.invoke(app, ["config", "init"], input="https://example.com\nsecret-token\n")
+    assert result.exit_code == 1
+    assert "TBCTL_TOKEN" in result.stderr
+    assert not (config_dir / "default.toml").exists()
 
 
 def test_init_profile(config_dir, monkeypatch):
@@ -172,13 +195,14 @@ def test_show_flattens_the_alias_table(config_dir):
     assert "{" not in result.output
 
 
-def test_show_flattens_nested_tables(config_dir):
-    cfg.save({"url": "https://example.com", "a": {"b": {"c": "deep"}}}, "default")
+def test_show_hides_plaintext_token(config_dir):
+    cfg.save({"url": "https://example.com", "token": "secret"}, "default")
 
     result = runner.invoke(app, ["config", "show"])
 
     assert result.exit_code == 0
-    assert "a.b.c = deep" in result.output
+    assert "secret" not in result.stdout
+    assert "token = not set" in result.stdout
 
 
 def test_show_json(config_dir):
@@ -186,10 +210,46 @@ def test_show_json(config_dir):
     runner.invoke(app, ["config", "set-token", "tb_abc123"])
     result = runner.invoke(app, ["config", "show", "--json"])
     assert result.exit_code == 0
-    assert json.loads(result.output) == {"url": "https://example.com", "token": "tb_abc123"}
+    assert json.loads(result.output) == {"url": "https://example.com", "token": "keyring"}
 
 
 def test_show_json_empty(config_dir):
     result = runner.invoke(app, ["config", "show", "-j"])
     assert result.exit_code == 0
     assert json.loads(result.output) == {}
+
+
+def test_load_warns_about_unknown_key(config_dir, capsys):
+    cfg.save({"url": "u", "token": "secret"}, "default")
+    assert cfg.load("default")["url"] == "u"
+    err = capsys.readouterr().err
+    assert "unknown key 'token'" in err
+    assert "secret" not in err
+
+
+def test_load_warns_once_per_key(config_dir, capsys):
+    cfg.save({"url": "u", "token": "x"}, "default")
+    cfg.load("default")
+    cfg.load("default")
+    assert capsys.readouterr().err.count("unknown key 'token'") == 1
+
+
+def test_load_is_silent_during_completion(config_dir, capsys, monkeypatch):
+    monkeypatch.setenv("_TBCTL_COMPLETE", "complete_zsh")
+    cfg.save({"url": "u", "token": "x"}, "default")
+    cfg.load("default")
+    assert capsys.readouterr().err == ""
+
+
+def test_load_is_silent_for_known_keys(config_dir, capsys):
+    cfg.save({"url": "u", "aliases": {}}, "default")
+    cfg.load("default")
+    assert capsys.readouterr().err == ""
+
+
+def test_set_token_with_broken_backend_names_the_reason(config_dir, broken_keyring):
+    result = runner.invoke(app, ["config", "set-token", "tb_abc123"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "Cannot unlock the wallet" in result.stderr
+    assert "TBCTL_TOKEN" in result.stderr

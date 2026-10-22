@@ -72,6 +72,22 @@ tbctl config show --json
 
 Multiple config profiles are supported via `--config <name>` / `-c` (default: `default`).
 
+The profile file `~/.config/tbctl/<profile>.toml` holds the URL and the device
+aliases. The API token is kept in the Secret Service (KWallet, GNOME Keyring),
+one entry per profile, and never in the file. `config show` names where the
+token comes from, not its value.
+
+Where no Secret Service is available, as in a Docker container or a
+devcontainer, set the token in the environment instead; it applies to every
+profile and takes precedence over the Secret Service:
+
+```sh
+export TBCTL_TOKEN=<api-token>
+```
+
+A file from an earlier version may still contain a `token` line. tbctl ignores
+it with a warning: run `tbctl config set-token` and delete the line.
+
 ## Usage
 
 ```sh

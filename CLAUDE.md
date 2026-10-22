@@ -28,7 +28,8 @@ uv run ruff format --check tbctl/ tests/  # format check
 ## Architecture
 
 - `tbctl/cli.py` - root Typer app
-- `tbctl/config.py` - reads/writes `~/.config/tbctl/config.toml` (url + token)
+- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url + aliases); warns about any other key
+- `tbctl/credentials.py` - the API token: `TBCTL_TOKEN`, else the Secret Service via `keyring` (service `tbctl`, user = profile); never in the TOML
 - `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument
 - `tbctl/commands/` - one module per subcommand group (`config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
 - `tbctl/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`

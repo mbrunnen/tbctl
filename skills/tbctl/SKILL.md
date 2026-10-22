@@ -36,9 +36,12 @@ Two short flags mean the same thing on every command that has them: `-p` is
 ## Start here
 
 ```sh
-tbctl config show      # is a URL and token configured?
+tbctl config show      # is a URL configured, and where does the token come from?
 tbctl config init      # interactive wizard, verifies against the server
 ```
+
+The token lives in the Secret Service. In a container, where there is none,
+`TBCTL_TOKEN=<api-token>` supplies it instead.
 
 `-c/--config <name>` picks a config profile (default: `default`). An
 unconfigured profile is the usual cause of a 401.

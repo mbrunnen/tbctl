@@ -29,6 +29,7 @@ dependencies = [
     "urllib3>=2",
     "tomli-w>=1.0",
     "plotext>=5",
+    "keyring>=25",
 ]
 
 [project.urls]
