@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`tbctl` is a CLI for ThingsBoard. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl config`, `tbctl ota`, `tbctl device`, `tbctl alias`, `tbctl telemetry`, and `tbctl attributes` subcommands.
+`tbctl` is a CLI for ThingsBoard. It uses a Python client generated from `openapi-4.3.0.1PE.json` and exposes `tbctl auth`, `tbctl config`, `tbctl ota`, `tbctl device`, `tbctl alias`, `tbctl telemetry`, and `tbctl attributes` subcommands.
 
 The client lives in `generated/tb_client/`, built by `./generate.sh`.
 
@@ -28,10 +28,11 @@ uv run ruff format --check tbctl/ tests/  # format check
 ## Architecture
 
 - `tbctl/cli.py` - root Typer app
-- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url + aliases); warns about any other key
-- `tbctl/credentials.py` - the API token: `TBCTL_TOKEN`, else the Secret Service via `keyring` (service `tbctl`, user = profile); never in the TOML
+- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, token_id, token_expires, token on fallback) with mode 0600; warns about any other key
+- `tbctl/credentials.py` - the API key: `TBCTL_TOKEN`, else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; a key without `token_id` counts as not logged in
+- `tbctl/apikey.py` - login (username/password -> JWT), creating 30-day API keys, rotation under a per-profile lock in the last 7 days (`ensure_fresh`, called by `_configuration`)
 - `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument
-- `tbctl/commands/` - one module per subcommand group (`config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
+- `tbctl/commands/` - one module per subcommand group (`auth.py`, `config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
 - `tbctl/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`
 - `generated/tb_client/` - Python client generated from `openapi-4.3.0.1PE.json` by `./generate.sh` (gitignored; run it once before installing or testing)
 

@@ -8,13 +8,14 @@ description: Use when a task touches a ThingsBoard tenant - reading device telem
 ## Overview
 
 `tbctl` is a CLI for ThingsBoard. Prefer it over hand-rolled REST calls: it
-holds the tenant URL and API token, resolves device names and local aliases,
+holds the tenant URL and API key, resolves device names and local aliases,
 and has JSON output everywhere.
 
 ## The command surface
 
 ```
-tbctl config      init | set-url | set-token | show
+tbctl auth        login | refresh | status | logout
+tbctl config      show
 tbctl ota         list | get | upload | download | delete | assign | unassign
 tbctl device      list | get | create | update | delete | assign | profiles
 tbctl telemetry   keys | latest | history
@@ -36,12 +37,13 @@ Two short flags mean the same thing on every command that has them: `-p` is
 ## Start here
 
 ```sh
-tbctl config show      # is a URL configured, and where does the token come from?
-tbctl config init      # interactive wizard, verifies against the server
+tbctl auth status      # logged in? which URL, user, key source and expiry
+tbctl auth login       # prompts for URL, username and password
 ```
 
-The token lives in the Secret Service. In a container, where there is none,
-`TBCTL_TOKEN=<api-token>` supplies it instead.
+`auth login` creates a 30-day API key that tbctl renews by itself in its last
+7 days. The key lives in the Secret Service, or in the 0600 profile file where
+there is none. `TBCTL_TOKEN=<api-key>` overrides both and is never renewed.
 
 `-c/--config <name>` picks a config profile (default: `default`). An
 unconfigured profile is the usual cause of a 401.

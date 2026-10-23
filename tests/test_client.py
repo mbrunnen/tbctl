@@ -252,12 +252,18 @@ def _ota_list():
     return CliRunner().invoke(app, ["ota", "list"])
 
 
-def test_missing_token_names_set_token_and_env(config_dir):
+def test_missing_token_names_login_and_env(config_dir):
     cfg.save({"url": "https://tb.example"}, "default")
     result = _ota_list()
     assert result.exit_code != 0
-    assert "config set-token" in result.stderr
+    assert "tbctl auth login" in result.stderr
     assert "TBCTL_TOKEN" in result.stderr
+
+
+def test_missing_url_names_login(config_dir):
+    result = _ota_list()
+    assert result.exit_code != 0
+    assert "tbctl auth login" in result.stderr
 
 
 def test_missing_token_without_backend_is_clean(config_dir, no_keyring):
@@ -286,4 +292,28 @@ def test_plaintext_token_in_toml_is_not_used(config_dir):
     cfg.save({"url": "https://tb.example", "token": "old"}, "default")
     result = _ota_list()
     assert result.exit_code != 0
-    assert "No API token for profile 'default'" in result.stderr
+    assert "Not logged in for profile 'default'" in result.stderr
+
+
+def test_configuration_refreshes_before_build(config_dir, monkeypatch):
+    cfg.save({"url": "https://tb.example"}, "default")
+    monkeypatch.setattr("tbctl.apikey.ensure_fresh", lambda profile: "new")
+    calls = []
+
+    def fake_build(url, token):
+        calls.append(token)
+        raise SystemExit(0)
+
+    monkeypatch.setattr("tbctl.commands._client.build_client", fake_build)
+    _ota_list()
+    assert calls == ["new"]
+
+
+def test_401_suggests_login(capsys):
+    import typer
+
+    from tb_client.exceptions import ApiException
+
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=401, reason="Unauthorized"))
+    assert "tbctl auth login" in capsys.readouterr().err

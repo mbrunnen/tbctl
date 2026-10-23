@@ -54,39 +54,43 @@ uv tool install . --reinstall --refresh
 
 ## Configuration
 
-The quickest way to get started is the interactive wizard, which prompts for the
-URL and token and verifies them against the server before saving:
+Log in with your ThingsBoard username and password:
 
 ```sh
-tbctl config init
+tbctl auth login
+tbctl auth login --url https://thingsboard.example.com -u me@example.com
 ```
 
-The individual commands are also available:
+`auth login` uses the password once to create an API key that expires in 30
+days. tbctl never stores the password. In the last 7 days, any tbctl command
+first replaces the key with a new 30-day one, so you only log in again after
+30 days without using tbctl. The replaced key is not deleted; it expires by
+itself. Two-factor authentication is not supported.
 
 ```sh
-tbctl config set-url https://thingsboard.example.com
-tbctl config set-token <api-token>
+tbctl auth status            # who is logged in, where the key is, when it expires
+tbctl auth status --json
+tbctl auth refresh           # replace the key now
+tbctl auth logout            # delete the key on the server and locally
 tbctl config show
-tbctl config show --json
 ```
 
 Multiple config profiles are supported via `--config <name>` / `-c` (default: `default`).
 
-The profile file `~/.config/tbctl/<profile>.toml` holds the URL and the device
-aliases. The API token is kept in the Secret Service (KWallet, GNOME Keyring),
-one entry per profile, and never in the file. `config show` names where the
-token comes from, not its value.
+The profile file `~/.config/tbctl/<profile>.toml` holds the URL, the device
+aliases and the key's id and expiry. The key itself is kept in the Secret
+Service (KWallet, GNOME Keyring), one entry per profile. Where no Secret
+Service is available, as in a Docker container or a devcontainer, or with
+`tbctl auth login --insecure-storage`, the key goes into the profile file
+instead. tbctl writes that file readable only by you (mode 0600) and warns
+when it does so.
 
-Where no Secret Service is available, as in a Docker container or a
-devcontainer, set the token in the environment instead; it applies to every
-profile and takes precedence over the Secret Service:
+`TBCTL_TOKEN` overrides the stored key for every profile. tbctl uses it as it
+is and never replaces it:
 
 ```sh
-export TBCTL_TOKEN=<api-token>
+export TBCTL_TOKEN=<api-key>
 ```
-
-A file from an earlier version may still contain a `token` line. tbctl ignores
-it with a warning: run `tbctl config set-token` and delete the line.
 
 ## Usage
 

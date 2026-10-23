@@ -30,12 +30,17 @@ def make_api_client(configuration):
     return _TbApiClient(configuration=configuration)
 
 
-def build_client(url: str, token: str):
+def build_client(url: str, token: str | None = None, prefix: str = "ApiKey"):
+    """Build a client for an API key, or for a JWT with ``prefix="Bearer"``.
+
+    Without a token the client is unauthenticated, as the login call needs.
+    """
     from tb_client.configuration import Configuration
 
     configuration = Configuration(host=url.rstrip("/"))
-    configuration.api_key = {"API key form": token}
-    configuration.api_key_prefix = {"API key form": "ApiKey"}
+    if token:
+        configuration.api_key = {"API key form": token}
+        configuration.api_key_prefix = {"API key form": prefix}
     return make_api_client(configuration)
 
 
@@ -48,14 +53,16 @@ def _configuration(profile: str):
 
     conf = cfg.load(profile)
     if not conf.get("url"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tbctl config init`.", err=True)
+        typer.echo(f"Profile '{profile}' not configured. Run `tbctl auth login`.", err=True)
         raise typer.Exit(1)
 
-    token = credentials.get(profile)
+    from tbctl import apikey
+
+    token = apikey.ensure_fresh(profile)
     if not token:
         typer.echo(
-            f"No API token for profile '{profile}'. Run `tbctl config set-token`, "
-            "or set TBCTL_TOKEN where no Secret Service is available.",
+            f"Not logged in for profile '{profile}'. Run `tbctl auth login`, "
+            f"or set {credentials.ENV}.",
             err=True,
         )
         raise typer.Exit(1)
@@ -127,6 +134,8 @@ def handle_api_error(e):
 
     if isinstance(e, ApiException):
         typer.echo(f"Error {e.status}: {_error_detail(e)}", err=True)
+        if e.status == 401:
+            typer.echo("Run `tbctl auth login` to log in again.", err=True)
         raise typer.Exit(1)
     raise e
 
@@ -220,6 +229,22 @@ def raw_post(api, resource_path, body):
     response = ac.call_api(*request)
     response.read()
     return raw_json(response)
+
+
+def raw_delete(api, resource_path):
+    ac = getattr(api, "api_client", api)
+    request = ac.param_serialize(
+        method="DELETE",
+        resource_path=resource_path,
+        header_params={"Accept": "application/json"},
+        auth_settings=["API key form"],
+    )
+    response = ac.call_api(*request)
+    response.read()
+    if response.status >= 400:
+        from tb_client.exceptions import ApiException
+
+        raise ApiException(http_resp=response)
 
 
 def resolve_profile_id(profile: str, name: str) -> str:

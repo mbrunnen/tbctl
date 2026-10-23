@@ -1,7 +1,7 @@
 import typer
 
 import tbctl.config as cfg
-from tbctl.commands import alias, attributes, config_cmd, device, ota, telemetry
+from tbctl.commands import alias, attributes, auth, config_cmd, device, ota, telemetry
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -10,6 +10,7 @@ def complete_profile(incomplete: str) -> list[str]:
     return [p for p in cfg.list_profiles() if p.startswith(incomplete)]
 
 
+app.add_typer(auth.app, name="auth")
 app.add_typer(config_cmd.app, name="config")
 app.add_typer(ota.app, name="ota")
 app.add_typer(telemetry.app, name="telemetry")
