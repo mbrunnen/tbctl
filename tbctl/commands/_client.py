@@ -146,7 +146,8 @@ def resolve_device_id(profile: str, device: str) -> str:
 
     A local alias takes precedence over a device of the same name, so the
     mapping the user configured always wins. An alias that carries the device's
-    UUID skips the name lookup, which needs tenant device-read permission.
+    UUID skips the name lookup, which needs tenant device-read permission, or for
+    a customer user searches that customer's devices.
     """
     alias = aliases.resolve(profile, device)
     if alias:
@@ -157,9 +158,19 @@ def resolve_device_id(profile: str, device: str) -> str:
         return device
     from tb_client.exceptions import ApiException
 
+    customer_id = cfg.load(profile).get("customer_id")
     try:
-        response = device_api(profile).get_tenant_device_without_preload_content(device_name=device)
-        found = raw_json(response)
+        if customer_id:
+            response = device_api(profile).get_customer_devices_without_preload_content(
+                customer_id=customer_id, page_size=100, page=0, text_search=device
+            )
+            matches = [d for d in raw_json(response).get("data", []) if d.get("name") == device]
+            found = matches[0] if matches else None
+        else:
+            response = device_api(profile).get_tenant_device_without_preload_content(
+                device_name=device
+            )
+            found = raw_json(response)
     except ApiException as e:
         if e.status == 403:
             typer.echo(

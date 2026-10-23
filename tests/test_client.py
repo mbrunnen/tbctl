@@ -325,3 +325,40 @@ def test_raw_json_empty_body_is_none():
     from tbctl.commands._client import raw_json
 
     assert raw_json(MagicMock(status=200, data=b"")) is None
+
+
+def test_resolve_device_id_by_name_as_customer(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
+    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+    api = MagicMock()
+    api.get_customer_devices_without_preload_content.return_value = _device_response(
+        {
+            "data": [
+                {"id": {"id": "other-uuid"}, "name": "OX1-UQEUBW-2"},
+                {"id": {"id": "resolved-uuid"}, "name": "OX1-UQEUBW"},
+            ]
+        }
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
+    api.get_tenant_device_without_preload_content.assert_not_called()
+    api.get_customer_devices_without_preload_content.assert_called_once_with(
+        customer_id=customer, page_size=100, page=0, text_search="OX1-UQEUBW"
+    )
+
+
+def test_resolve_device_id_by_name_as_customer_not_found(monkeypatch, config_dir):
+    from unittest.mock import MagicMock
+
+    import typer
+
+    cfg.save({"url": "https://tb", "customer_id": "c1"}, "default")
+    api = MagicMock()
+    api.get_customer_devices_without_preload_content.return_value = _device_response({"data": []})
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+
+    with pytest.raises(typer.Exit):
+        resolve_device_id("default", "missing")

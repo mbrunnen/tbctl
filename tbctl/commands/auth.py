@@ -7,7 +7,8 @@ import typer
 import tbctl.config as cfg
 import tbctl.credentials as credentials
 from tbctl import session
-from tbctl.commands._client import _error_detail, check_connection
+from tbctl.commands import _client
+from tbctl.commands._client import _error_detail, build_client, check_connection
 
 app = typer.Typer(no_args_is_help=True, help="Log in to ThingsBoard.")
 
@@ -33,11 +34,34 @@ def _api_error(e: Exception, url: str) -> None:
     _fail(f"Could not reach {url}: {e}")
 
 
-def _store(profile: str, url: str, kind: str, secret: str, expires, insecure: bool) -> None:
+def _whoami(url: str, token: str, prefix: str, what: str) -> dict:
+    from tb_client.exceptions import ApiException
+
+    try:
+        return _client.raw_get(build_client(url, token, prefix), "/api/auth/user")
+    except ApiException as e:
+        _fail(f"The server rejected the {what}: Error {e.status}: {_error_detail(e)}")
+    except Exception as e:
+        _fail(f"Could not reach {url}: {e}")
+
+
+def _customer_id(user: dict) -> str | None:
+    """A customer user may only use the customer endpoints, so remember whose."""
+    if user.get("authority") == "CUSTOMER_USER":
+        return user["customerId"]["id"]
+    return None
+
+
+def _store(
+    profile: str, url: str, kind: str, secret: str, expires, insecure: bool, user: dict
+) -> None:
     """Replace the profile's login, so an old secret is never paired with a new URL."""
     credentials.clear(profile)
     data = cfg.load(profile)
     data["url"] = url
+    customer_id = _customer_id(user)
+    if customer_id:
+        data["customer_id"] = customer_id
     cfg.save(data, profile)
     credentials.save(profile, kind, secret, expires, insecure=insecure)
 
@@ -68,11 +92,9 @@ def login(
             key = typer.prompt("API key", hide_input=True)
         else:
             key = sys.stdin.read().strip()
-        ok, user = check_connection(url, key)
-        if not ok:
-            _fail(f"The server rejected the API key: {user}")
-        _store(profile, url, credentials.API_KEY, key, None, insecure_storage)
-        typer.echo(f"Logged in to {url} as {user} with an API key.")
+        user = _whoami(url, key, "ApiKey", "API key")
+        _store(profile, url, credentials.API_KEY, key, None, insecure_storage, user)
+        typer.echo(f"Logged in to {url} as {user.get('email')} with an API key.")
         return
 
     if not username:
@@ -86,8 +108,9 @@ def login(
         _fail(f"Login failed: {e}")
     except Exception as e:
         _api_error(e, url)
+    user = _whoami(url, pair["token"], "Bearer", "session")
     expires = session.exp_ms(pair["refreshToken"])
-    _store(profile, url, credentials.JWT, json.dumps(pair), expires, insecure_storage)
+    _store(profile, url, credentials.JWT, json.dumps(pair), expires, insecure_storage, user)
     typer.echo(f"Logged in to {url} as {username}; session valid until {session.date(expires)}.")
 
 

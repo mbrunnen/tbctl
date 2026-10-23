@@ -83,6 +83,10 @@ tbctl auth logout            # end the session and forget the credential
 tbctl config show
 ```
 
+When you log in as a customer user, tbctl remembers your customer, so
+`device list` and device names use that customer's devices instead of the
+tenant-wide endpoints a customer user may not call.
+
 Multiple config profiles are supported via `--config <name>` / `-c` (default: `default`).
 
 The profile file `~/.config/tbctl/<profile>.toml` holds the URL, the device
@@ -168,8 +172,8 @@ tbctl attributes get <device> --scope SERVER_SCOPE --keys fwVersion
 ```
 
 `<device>` accepts a device UUID, a device name, or a local alias. Name
-resolution needs an API token with tenant device-read permission; otherwise pass
-the UUID directly.
+resolution needs tenant device-read permission, or a customer login (which
+searches that customer's devices); otherwise pass the UUID directly.
 
 `-p/--device-profile` means the same thing on every command that takes one
 (`ota list|upload|download`, `device list|create|update`) and accepts a device

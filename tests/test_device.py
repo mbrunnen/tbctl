@@ -663,3 +663,27 @@ def test_list_rejects_an_unknown_device_profile_uuid():
 
     assert result.exit_code == 1
     assert "not found" in result.stderr
+
+
+def test_list_uses_stored_customer(config_dir):
+    import tbctl.config as cfg
+    from tbctl.cli import app
+
+    customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
+    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+    mock_api = MagicMock()
+    mock_api.get_customer_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict()], "totalElements": 1}
+    )
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device._customer_name", return_value="Acme Corp"),
+    ):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0, result.output
+    mock_api.get_tenant_devices_without_preload_content.assert_not_called()
+    mock_api.get_customer_devices_without_preload_content.assert_called_once_with(
+        customer_id=customer, page_size=20, page=0, type=None, text_search=None
+    )

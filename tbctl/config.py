@@ -7,7 +7,7 @@ import tomli_w
 import typer
 
 CONFIG_DIR = Path.home() / ".config" / "tbctl"
-KEYS = ("url", "aliases", "auth", "refresh_expires", "token")
+KEYS = ("url", "aliases", "auth", "refresh_expires", "token", "customer_id")
 
 _warned: set[tuple[Path, str]] = set()
 

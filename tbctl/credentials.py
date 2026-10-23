@@ -129,7 +129,7 @@ def clear(profile: str) -> bool:
     if not (cfg.CONFIG_DIR / f"{profile}.toml").exists():
         return removed
     data = cfg.load(profile)
-    for key in ("token", "auth", "refresh_expires"):
+    for key in ("token", "auth", "refresh_expires", "customer_id"):
         if data.pop(key, None) is not None:
             removed = True
     cfg.save(data, profile)

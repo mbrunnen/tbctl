@@ -28,7 +28,7 @@ uv run ruff format --check tbctl/ tests/  # format check
 ## Architecture
 
 - `tbctl/cli.py` - root Typer app
-- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, auth, refresh_expires, token on fallback) with mode 0600; warns about any other key
+- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, auth, refresh_expires, customer_id for a customer user, token on fallback) with mode 0600; warns about any other key
 - `tbctl/credentials.py` - the credential: `TBCTL_TOKEN` (an API key), else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; the secret is a JSON JWT pair (`auth = "jwt"`) or an API key (`auth = "api-key"`); a secret without `auth` counts as not logged in
 - `tbctl/session.py` - login (username/password -> JWT pair), renewal via the refresh token under a per-profile lock when the access token has under a minute left (`ensure_fresh`, called by `_configuration`, returns token and header prefix), logout
 - `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument

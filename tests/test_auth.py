@@ -300,3 +300,34 @@ def test_refresh_without_url_is_clean(fake_server):
     result = runner.invoke(app, ["auth", "refresh"])
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+
+
+def test_login_as_customer_stores_customer_id(fake_server):
+    from tests.conftest import CUSTOMER_UUID
+
+    fake_server.as_customer()
+    assert _login().exit_code == 0
+    assert cfg.load("default")["customer_id"] == CUSTOMER_UUID
+    assert ("GET", "/api/auth/user", f"Bearer {make_pair(1)['token']}", None) in fake_server.calls
+
+
+def test_login_as_tenant_stores_no_customer_id(fake_server):
+    cfg.save({"url": "https://tb", "customer_id": "old"}, "default")
+    assert _login().exit_code == 0
+    assert "customer_id" not in cfg.load("default")
+
+
+def test_api_key_login_as_customer_stores_customer_id(fake_server):
+    from tests.conftest import CUSTOMER_UUID
+
+    fake_server.as_customer()
+    result = runner.invoke(app, ["auth", "login", "--api-key", "--url", "https://tb"], input="k\n")
+    assert result.exit_code == 0, result.output
+    assert cfg.load("default")["customer_id"] == CUSTOMER_UUID
+
+
+def test_logout_drops_customer_id(fake_server):
+    fake_server.as_customer()
+    _login()
+    runner.invoke(app, ["auth", "logout"])
+    assert "customer_id" not in cfg.load("default")

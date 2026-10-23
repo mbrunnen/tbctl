@@ -75,6 +75,8 @@ def jwt_with(claims: dict) -> str:
 
 
 NOW_MS = 1_800_000_000_000
+NULL_UUID = "13814000-1dd2-11b2-8080-808080808080"
+CUSTOMER_UUID = "d6b77b60-714f-11f1-ba38-655c002e257c"
 ACCESS_S = 9000
 REFRESH_S = 7 * 86400
 
@@ -95,6 +97,16 @@ class FakeServer:
         self.login_reply = make_pair(1)
         self.fail = {}
         self.pairs = 1
+        self.user = {
+            "id": {"id": "u1", "entityType": "USER"},
+            "email": "me@example.com",
+            "authority": "TENANT_ADMIN",
+            "customerId": {"id": NULL_UUID, "entityType": "CUSTOMER"},
+        }
+
+    def as_customer(self):
+        self.user["authority"] = "CUSTOMER_USER"
+        self.user["customerId"]["id"] = CUSTOMER_UUID
 
     def _record(self, method, api, path, body=None):
         conf = api.configuration
@@ -105,7 +117,7 @@ class FakeServer:
     def get(self, api, path, query=None):
         self._record("GET", api, path)
         if path == "/api/auth/user":
-            return {"id": {"id": "u1", "entityType": "USER"}, "email": "me@example.com"}
+            return self.user
         raise AssertionError(path)
 
     def post(self, api, path, body):

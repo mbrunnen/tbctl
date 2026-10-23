@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import typer
 
 import tbctl.aliases as aliases
+import tbctl.config as cfg
 from tbctl.commands._client import (
     _UUID_RE,
     _save_device_raw,
@@ -85,6 +86,7 @@ def list_devices(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     alias_of = _alias_by_device(ctx.obj["profile"])
+    customer = customer or cfg.load(ctx.obj["profile"]).get("customer_id")
     api = device_api(ctx.obj["profile"])
     type = _profile_name(api, device_profile)
     try:
