@@ -4,7 +4,7 @@ import typer
 
 import tbctl.config as cfg
 import tbctl.credentials as credentials
-from tbctl import apikey
+from tbctl import session
 
 app = typer.Typer(no_args_is_help=True, help="Show CLI configuration.")
 
@@ -27,13 +27,15 @@ def show(
     profile = ctx.obj["profile"]
     stored = cfg.load(profile)
     data = {key: stored[key] for key in ("url", "aliases") if key in stored}
-    source = credentials.source(profile)
-    if not data and not source:
+    cred = credentials.load(profile)
+    if not data and not cred:
         typer.echo("{}" if output_json else f"No configuration found for profile '{profile}'.")
         return
-    data["token"] = source or "not set"
-    if source and source != credentials.ENV:
-        data["token_expires"] = apikey.date(stored["token_expires"])
+    data["auth"] = cred.kind if cred else "not set"
+    if cred:
+        data["source"] = cred.source
+    if cred and cred.source != credentials.ENV and "refresh_expires" in stored:
+        data["refresh_expires"] = session.date(stored["refresh_expires"])
     if output_json:
         typer.echo(json.dumps(data, indent=2))
         return

@@ -279,13 +279,13 @@ def test_token_from_env_builds_client(config_dir, monkeypatch):
     monkeypatch.setenv("TBCTL_TOKEN", "env-tok")
     calls = []
 
-    def fake_build(url, token):
-        calls.append((url, token))
+    def fake_build(url, token, prefix):
+        calls.append((url, token, prefix))
         raise SystemExit(0)
 
     monkeypatch.setattr("tbctl.commands._client.build_client", fake_build)
     _ota_list()
-    assert calls == [("https://tb.example", "env-tok")]
+    assert calls == [("https://tb.example", "env-tok", "ApiKey")]
 
 
 def test_plaintext_token_in_toml_is_not_used(config_dir):
@@ -297,16 +297,16 @@ def test_plaintext_token_in_toml_is_not_used(config_dir):
 
 def test_configuration_refreshes_before_build(config_dir, monkeypatch):
     cfg.save({"url": "https://tb.example"}, "default")
-    monkeypatch.setattr("tbctl.apikey.ensure_fresh", lambda profile: "new")
+    monkeypatch.setattr("tbctl.session.ensure_fresh", lambda profile: ("new", "Bearer"))
     calls = []
 
-    def fake_build(url, token):
-        calls.append(token)
+    def fake_build(url, token, prefix):
+        calls.append((token, prefix))
         raise SystemExit(0)
 
     monkeypatch.setattr("tbctl.commands._client.build_client", fake_build)
     _ota_list()
-    assert calls == ["new"]
+    assert calls == [("new", "Bearer")]
 
 
 def test_401_suggests_login(capsys):
@@ -317,3 +317,11 @@ def test_401_suggests_login(capsys):
     with pytest.raises(typer.Exit):
         handle_api_error(ApiException(status=401, reason="Unauthorized"))
     assert "tbctl auth login" in capsys.readouterr().err
+
+
+def test_raw_json_empty_body_is_none():
+    from unittest.mock import MagicMock
+
+    from tbctl.commands._client import raw_json
+
+    assert raw_json(MagicMock(status=200, data=b"")) is None

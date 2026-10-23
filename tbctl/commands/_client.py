@@ -56,10 +56,10 @@ def _configuration(profile: str):
         typer.echo(f"Profile '{profile}' not configured. Run `tbctl auth login`.", err=True)
         raise typer.Exit(1)
 
-    from tbctl import apikey
+    from tbctl import session
 
-    token = apikey.ensure_fresh(profile)
-    if not token:
+    fresh = session.ensure_fresh(profile)
+    if not fresh:
         typer.echo(
             f"Not logged in for profile '{profile}'. Run `tbctl auth login`, "
             f"or set {credentials.ENV}.",
@@ -67,10 +67,11 @@ def _configuration(profile: str):
         )
         raise typer.Exit(1)
 
-    return build_client(conf["url"], token)
+    token, prefix = fresh
+    return build_client(conf["url"], token, prefix)
 
 
-def check_connection(url: str, token: str) -> tuple[bool, str]:
+def check_connection(url: str, token: str, prefix: str = "ApiKey") -> tuple[bool, str]:
     """Verify a URL and token against /api/auth/user without ever raising."""
     try:
         from tb_client.exceptions import ApiException
@@ -78,7 +79,7 @@ def check_connection(url: str, token: str) -> tuple[bool, str]:
         return False, "tb_client not found; run ./generate.sh"
 
     try:
-        user = raw_get(build_client(url, token), "/api/auth/user")
+        user = raw_get(build_client(url, token, prefix), "/api/auth/user")
     except ApiException as e:
         return False, f"{e.status} {e.reason or ''}".strip()
     except Exception as e:
@@ -188,6 +189,8 @@ def raw_json(response):
         from tb_client.exceptions import ApiException
 
         raise ApiException(http_resp=response)
+    if not response.data:
+        return None
     return json.loads(response.data)
 
 
@@ -229,22 +232,6 @@ def raw_post(api, resource_path, body):
     response = ac.call_api(*request)
     response.read()
     return raw_json(response)
-
-
-def raw_delete(api, resource_path):
-    ac = getattr(api, "api_client", api)
-    request = ac.param_serialize(
-        method="DELETE",
-        resource_path=resource_path,
-        header_params={"Accept": "application/json"},
-        auth_settings=["API key form"],
-    )
-    response = ac.call_api(*request)
-    response.read()
-    if response.status >= 400:
-        from tb_client.exceptions import ApiException
-
-        raise ApiException(http_resp=response)
 
 
 def resolve_profile_id(profile: str, name: str) -> str:

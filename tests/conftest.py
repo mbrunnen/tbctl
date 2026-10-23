@@ -74,14 +74,27 @@ def jwt_with(claims: dict) -> str:
     return f"eyJhbGciOiJIUzUxMiJ9.{payload}.sig"
 
 
+NOW_MS = 1_800_000_000_000
+ACCESS_S = 9000
+REFRESH_S = 7 * 86400
+
+
+def make_pair(n: int, now_ms: int = NOW_MS) -> dict:
+    now_s = now_ms // 1000
+    return {
+        "token": jwt_with({"n": n, "scopes": ["TENANT_ADMIN"], "exp": now_s + ACCESS_S}),
+        "refreshToken": jwt_with({"n": n, "scopes": ["REFRESH_TOKEN"], "exp": now_s + REFRESH_S}),
+    }
+
+
 class FakeServer:
-    """Answer the auth and API key endpoints, recording each call with its auth header."""
+    """Answer the auth endpoints, recording each call with its auth header."""
 
     def __init__(self):
         self.calls = []
-        self.login_reply = {"token": jwt_with({"scopes": ["TENANT_ADMIN"]}), "refreshToken": "r"}
+        self.login_reply = make_pair(1)
         self.fail = {}
-        self.key_counter = 1
+        self.pairs = 1
 
     def _record(self, method, api, path, body=None):
         conf = api.configuration
@@ -99,17 +112,12 @@ class FakeServer:
         self._record("POST", api, path, body)
         if path == "/api/auth/login":
             return self.login_reply
-        if path == "/api/apiKey":
-            self.key_counter += 1
-            return {
-                "id": {"id": f"k{self.key_counter}", "entityType": "API_KEY"},
-                "value": f"ApiKey secret{self.key_counter}",
-                "expirationTime": body["expirationTime"],
-            }
+        if path == "/api/auth/token":
+            self.pairs += 1
+            return make_pair(self.pairs)
+        if path == "/api/auth/logout":
+            return None
         raise AssertionError(path)
-
-    def delete(self, api, path):
-        self._record("DELETE", api, path)
 
     def paths(self, method):
         return [c[1] for c in self.calls if c[0] == method]
@@ -120,5 +128,4 @@ def fake_server(monkeypatch):
     server = FakeServer()
     monkeypatch.setattr("tbctl.commands._client.raw_get", server.get)
     monkeypatch.setattr("tbctl.commands._client.raw_post", server.post)
-    monkeypatch.setattr("tbctl.commands._client.raw_delete", server.delete, raising=False)
     return server

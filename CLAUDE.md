@@ -28,9 +28,9 @@ uv run ruff format --check tbctl/ tests/  # format check
 ## Architecture
 
 - `tbctl/cli.py` - root Typer app
-- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, token_id, token_expires, token on fallback) with mode 0600; warns about any other key
-- `tbctl/credentials.py` - the API key: `TBCTL_TOKEN`, else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; a key without `token_id` counts as not logged in
-- `tbctl/apikey.py` - login (username/password -> JWT), creating 30-day API keys, rotation under a per-profile lock in the last 7 days (`ensure_fresh`, called by `_configuration`)
+- `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, auth, refresh_expires, token on fallback) with mode 0600; warns about any other key
+- `tbctl/credentials.py` - the credential: `TBCTL_TOKEN` (an API key), else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; the secret is a JSON JWT pair (`auth = "jwt"`) or an API key (`auth = "api-key"`); a secret without `auth` counts as not logged in
+- `tbctl/session.py` - login (username/password -> JWT pair), renewal via the refresh token under a per-profile lock when the access token has under a minute left (`ensure_fresh`, called by `_configuration`, returns token and header prefix), logout
 - `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument
 - `tbctl/commands/` - one module per subcommand group (`auth.py`, `config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
 - `tbctl/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`
@@ -38,7 +38,7 @@ uv run ruff format --check tbctl/ tests/  # format check
 
 The generated client returns telemetry and attribute endpoints as a Python `repr` string (single-quoted, not valid JSON). `parse_response` coerces these via `json.loads` then `ast.literal_eval`; wrap every such response in it.
 
-Auth uses `X-Authorization: ApiKey <token>` via the generated client's `Configuration.api_key`.
+Auth uses `X-Authorization: Bearer <jwt>` or `X-Authorization: ApiKey <key>` via the generated client's `Configuration.api_key`.
 
 ## Tooling
 

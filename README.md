@@ -61,32 +61,40 @@ tbctl auth login
 tbctl auth login --url https://thingsboard.example.com -u me@example.com
 ```
 
-`auth login` uses the password once to create an API key that expires in 30
-days. tbctl never stores the password. In the last 7 days, any tbctl command
-first replaces the key with a new 30-day one, so you only log in again after
-30 days without using tbctl. The replaced key is not deleted; it expires by
-itself. Two-factor authentication is not supported.
+`auth login` stores the session the server returns (a JWT access token and its
+refresh token), never the password. Any tbctl command renews the access token
+when it is about to expire. Once the refresh token has expired (after 7 days
+by default, set by the server), log in again. Two-factor authentication is not
+supported.
+
+To use an API key you created in ThingsBoard instead, store it with
+`--api-key`. tbctl reads the key from a hidden prompt, or from stdin when
+piped, and uses it as it is:
 
 ```sh
-tbctl auth status            # who is logged in, where the key is, when it expires
+tbctl auth login --api-key --url https://thingsboard.example.com
+```
+
+```sh
+tbctl auth status            # who is logged in, how, and until when
 tbctl auth status --json
-tbctl auth refresh           # replace the key now
-tbctl auth logout            # delete the key on the server and locally
+tbctl auth refresh           # renew the session now
+tbctl auth logout            # end the session and forget the credential
 tbctl config show
 ```
 
 Multiple config profiles are supported via `--config <name>` / `-c` (default: `default`).
 
 The profile file `~/.config/tbctl/<profile>.toml` holds the URL, the device
-aliases and the key's id and expiry. The key itself is kept in the Secret
-Service (KWallet, GNOME Keyring), one entry per profile. Where no Secret
-Service is available, as in a Docker container or a devcontainer, or with
-`tbctl auth login --insecure-storage`, the key goes into the profile file
-instead. tbctl writes that file readable only by you (mode 0600) and warns
+aliases, the kind of login and the session's expiry. The secret itself is kept
+in the Secret Service (KWallet, GNOME Keyring), one entry per profile. Where no
+Secret Service is available, as in a Docker container or a devcontainer, or
+with `tbctl auth login --insecure-storage`, the secret goes into the profile
+file instead. tbctl writes that file readable only by you (mode 0600) and warns
 when it does so.
 
-`TBCTL_TOKEN` overrides the stored key for every profile. tbctl uses it as it
-is and never replaces it:
+`TBCTL_TOKEN` overrides the stored login for every profile and is used as an
+API key:
 
 ```sh
 export TBCTL_TOKEN=<api-key>

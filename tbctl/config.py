@@ -6,7 +6,7 @@ from pathlib import Path
 import tomli_w
 
 CONFIG_DIR = Path.home() / ".config" / "tbctl"
-KEYS = ("url", "aliases", "token", "token_id", "token_expires")
+KEYS = ("url", "aliases", "auth", "refresh_expires", "token")
 
 _warned: set[tuple[Path, str]] = set()
 
@@ -36,14 +36,12 @@ def _warn_unknown(path: Path, data: dict) -> None:
     if "_TBCTL_COMPLETE" in os.environ:
         return
     problems = [(key, f"unknown key '{key}'") for key in data if key not in KEYS]
-    if "token_id" not in data:
+    if "auth" not in data:
         problems += [
-            (key, f"'{key}' without 'token_id'; run `tbctl auth login`")
-            for key in ("token", "token_expires")
+            (key, f"'{key}' without 'auth'; run `tbctl auth login`")
+            for key in ("token", "refresh_expires")
             if key in data
         ]
-    elif "token_expires" not in data:
-        problems.append(("token_id", "'token_id' without 'token_expires'; run `tbctl auth login`"))
     for key, problem in problems:
         if (path, key) not in _warned:
             _warned.add((path, key))

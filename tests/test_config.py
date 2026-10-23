@@ -36,11 +36,11 @@ def test_show_empty(config_dir):
 
 def test_show(config_dir):
     cfg.save({"url": "https://example.com"}, "default")
-    credentials.save("default", "tb_abc123", "k1", 1_800_000_000_000)
+    credentials.save("default", "api-key", "tb_abc123")
     result = runner.invoke(app, ["config", "show"])
     assert result.exit_code == 0
     assert "https://example.com" in result.output
-    assert "token = keyring" in result.output
+    assert "source = keyring" in result.output
     assert "tb_abc123" not in result.output
 
 
@@ -48,7 +48,7 @@ def test_show_reports_env_source(config_dir, monkeypatch):
     cfg.save({"url": "https://example.com"}, "default")
     monkeypatch.setenv("TBCTL_TOKEN", "x")
     result = runner.invoke(app, ["config", "show"])
-    assert "token = TBCTL_TOKEN" in result.output
+    assert "source = TBCTL_TOKEN" in result.output
 
 
 def test_show_profile_isolation(config_dir):
@@ -95,18 +95,18 @@ def test_show_ignores_token_without_login(config_dir):
 
     assert result.exit_code == 0
     assert "secret" not in result.stdout
-    assert "token = not set" in result.stdout
+    assert "auth = not set" in result.stdout
 
 
 def test_show_json(config_dir):
     cfg.save({"url": "https://example.com"}, "default")
-    credentials.save("default", "tb_abc123", "k1", 1_800_000_000_000)
+    credentials.save("default", "api-key", "tb_abc123")
     result = runner.invoke(app, ["config", "show", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == {
         "url": "https://example.com",
-        "token": "keyring",
-        "token_expires": "2027-01-15",
+        "auth": "api-key",
+        "source": "keyring",
     }
 
 
@@ -156,20 +156,20 @@ def test_save_creates_private_dir(tmp_path, monkeypatch):
     assert d.stat().st_mode & 0o777 == 0o700
 
 
-def test_token_keys_are_known(config_dir, capsys):
-    cfg.save({"url": "u", "token": "t", "token_id": "i", "token_expires": 1}, "p")
+def test_auth_keys_are_known(config_dir, capsys):
+    cfg.save({"url": "u", "token": "t", "auth": "jwt", "refresh_expires": 1}, "p")
     cfg.load("p")
-    assert "unknown key" not in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
 
 
 def test_show_hides_file_token(config_dir, no_keyring):
     cfg.save({"url": "https://example.com"}, "default")
-    credentials.save("default", "secret", "k1", 1_800_000_000_000)
+    credentials.save("default", "jwt", "secret", refresh_expires=1_800_000_000_000)
     result = runner.invoke(app, ["config", "show"])
-    assert "token = file" in result.stdout
-    assert "token_expires = 2027-01-15" in result.stdout
+    assert "auth = jwt" in result.stdout
+    assert "source = file" in result.stdout
+    assert "refresh_expires = 2027-01-15 " in result.stdout
     assert "secret" not in result.stdout
-    assert "k1" not in result.stdout
 
 
 def test_old_config_commands_are_gone(config_dir):
@@ -177,17 +177,20 @@ def test_old_config_commands_are_gone(config_dir):
         assert runner.invoke(app, ["config", command]).exit_code == 2
 
 
-def test_load_warns_about_token_without_login(config_dir, capsys):
-    cfg.save({"url": "u", "token": "old"}, "default")
+def test_load_warns_about_token_without_auth(config_dir, capsys):
+    cfg.save({"url": "u", "token": "old", "refresh_expires": 1}, "default")
     cfg.load("default")
     cfg.load("default")
     err = capsys.readouterr().err
-    assert err.count("ignoring 'token' without 'token_id'") == 1
+    assert err.count("ignoring 'token' without 'auth'") == 1
+    assert "'refresh_expires' without 'auth'" in err
     assert "tbctl auth login" in err
     assert "old" not in err
 
 
-def test_load_warns_about_token_id_without_expiry(config_dir, capsys):
-    cfg.save({"url": "u", "token_id": "k1"}, "default")
+def test_load_names_old_api_key_metadata_unknown(config_dir, capsys):
+    cfg.save({"url": "u", "token_id": "k1", "token_expires": 1}, "default")
     cfg.load("default")
-    assert "'token_id' without 'token_expires'" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "unknown key 'token_id'" in err
+    assert "unknown key 'token_expires'" in err

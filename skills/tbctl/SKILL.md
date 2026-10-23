@@ -37,13 +37,15 @@ Two short flags mean the same thing on every command that has them: `-p` is
 ## Start here
 
 ```sh
-tbctl auth status      # logged in? which URL, user, key source and expiry
+tbctl auth status      # logged in? which URL, user, login kind and expiry
 tbctl auth login       # prompts for URL, username and password
 ```
 
-`auth login` creates a 30-day API key that tbctl renews by itself in its last
-7 days. The key lives in the Secret Service, or in the 0600 profile file where
-there is none. `TBCTL_TOKEN=<api-key>` overrides both and is never renewed.
+`auth login` stores a JWT session that tbctl renews by itself until the
+refresh token expires (7 days by default); then log in again. `auth login
+--api-key` stores an API key instead. The secret lives in the Secret Service,
+or in the 0600 profile file where there is none. `TBCTL_TOKEN=<api-key>`
+overrides both.
 
 `-c/--config <name>` picks a config profile (default: `default`). An
 unconfigured profile is the usual cause of a 401.
