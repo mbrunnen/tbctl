@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 
 import tomli_w
+import typer
 
 CONFIG_DIR = Path.home() / ".config" / "tbctl"
 KEYS = ("url", "aliases", "auth", "refresh_expires", "token")
@@ -25,10 +26,23 @@ def load(profile: str = "default") -> dict:
     path = _path(profile)
     if not path.exists():
         return {}
+    _check_private(path)
     with open(path, "rb") as f:
         data = tomllib.load(f)
     _warn_unknown(path, data)
     return data
+
+
+def _check_private(path: Path) -> None:
+    """Refuse a profile others can read: it may hold a credential."""
+    for target, mode in ((path.parent, 0o700), (path, 0o600)):
+        actual = target.stat().st_mode & 0o777
+        if actual & 0o077:
+            typer.echo(
+                f"Permissions {actual:o} for {target} are too open. Run `chmod {mode:o} {target}`.",
+                err=True,
+            )
+            raise typer.Exit(1)
 
 
 def _warn_unknown(path: Path, data: dict) -> None:

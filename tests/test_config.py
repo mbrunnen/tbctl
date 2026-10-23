@@ -1,6 +1,7 @@
 import json
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 import tbctl.config as cfg
@@ -194,3 +195,29 @@ def test_load_names_old_api_key_metadata_unknown(config_dir, capsys):
     err = capsys.readouterr().err
     assert "unknown key 'token_id'" in err
     assert "unknown key 'token_expires'" in err
+
+
+def test_load_refuses_open_file(config_dir, capsys):
+    cfg.save({"url": "https://x"}, "p")
+    path = config_dir / "p.toml"
+    path.chmod(0o664)
+    with pytest.raises(typer.Exit):
+        cfg.load("p")
+    err = capsys.readouterr().err
+    assert f"Permissions 664 for {path} are too open" in err
+    assert f"chmod 600 {path}" in err
+    assert path.stat().st_mode & 0o777 == 0o664
+
+
+def test_load_refuses_open_dir(config_dir, capsys):
+    cfg.save({"url": "https://x"}, "p")
+    config_dir.chmod(0o755)
+    with pytest.raises(typer.Exit):
+        cfg.load("p")
+    assert f"chmod 700 {config_dir}" in capsys.readouterr().err
+    assert config_dir.stat().st_mode & 0o777 == 0o755
+
+
+def test_load_accepts_private_profile(config_dir):
+    cfg.save({"url": "https://x"}, "p")
+    assert cfg.load("p") == {"url": "https://x"}

@@ -91,7 +91,8 @@ in the Secret Service (KWallet, GNOME Keyring), one entry per profile. Where no
 Secret Service is available, as in a Docker container or a devcontainer, or
 with `tbctl auth login --insecure-storage`, the secret goes into the profile
 file instead. tbctl writes that file readable only by you (mode 0600) and warns
-when it does so.
+when it does so. It refuses to read a profile file that is not 0600, or a
+`~/.config/tbctl` that is not 0700, and names the `chmod` to run.
 
 `TBCTL_TOKEN` overrides the stored login for every profile and is used as an
 API key:
