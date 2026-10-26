@@ -687,3 +687,63 @@ def test_list_uses_stored_customer(config_dir):
     mock_api.get_customer_devices_without_preload_content.assert_called_once_with(
         customer_id=customer, page_size=20, page=0, type=None, text_search=None
     )
+
+
+def _get_with_raw(device, raw_get):
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(device)
+    with (
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device.raw_get", side_effect=raw_get),
+    ):
+        return runner.invoke(app, ["device", "get", DEVICE_UUID])
+
+
+def test_get_shows_assigned_firmware():
+    def raw_get(_api, path, *args):
+        assert path == "/api/otaPackage/info/fw-1"
+        return {"title": "ox1-app", "version": "1.4.2"}
+
+    result = _get_with_raw({**_device_dict(), "firmwareId": {"id": "fw-1"}}, raw_get)
+
+    assert result.exit_code == 0, result.output
+    assert "ox1-app 1.4.2" in result.output
+    assert "inherited" not in result.output
+
+
+def test_get_shows_software_inherited_from_profile():
+    def raw_get(_api, path, *args):
+        if path == f"/api/deviceProfile/{PROFILE_UUID}":
+            return {"softwareId": {"id": "sw-9"}}
+        if path == "/api/otaPackage/info/sw-9":
+            return {"title": "ox1-cfg", "version": "0.9.0"}
+        raise AssertionError(path)
+
+    device = {**_device_dict(), "deviceProfileId": {"id": PROFILE_UUID}}
+    result = _get_with_raw(device, raw_get)
+
+    assert result.exit_code == 0, result.output
+    assert "ox1-cfg 0.9.0 (inherited from profile)" in result.output
+
+
+def test_get_marks_unreadable_package():
+    def raw_get(_api, path, *args):
+        raise Exception("404")
+
+    result = _get_with_raw({**_device_dict(), "firmwareId": {"id": "fw-gone"}}, raw_get)
+
+    assert result.exit_code == 0, result.output
+    assert "fw-gone (?)" in result.output
+
+
+def test_get_marks_unreadable_profile():
+    def raw_get(_api, path, *args):
+        raise Exception("403")
+
+    device = {**_device_dict(), "deviceProfileId": {"id": PROFILE_UUID}}
+    result = _get_with_raw(device, raw_get)
+
+    assert result.exit_code == 0, result.output
+    assert "? (device profile not readable)" in result.output

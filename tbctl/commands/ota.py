@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 
 import tbctl.aliases as aliases
+import tbctl.config as cfg
 from tbctl.commands._client import (
     _UUID_RE,
     _configuration,
@@ -590,3 +591,114 @@ def unassign_package(
     except Exception as e:
         handle_api_error(e)
     typer.echo(f"Cleared {pkg_type} assignment from {device_id}")
+
+
+def _all_pages(api, path, query=()):
+    result = []
+    page = 0
+    while True:
+        data = raw_get(api, path, [*query, ("pageSize", _PAGE_SIZE), ("page", page)])
+        result.extend(data.get("data", []))
+        if not data.get("hasNext"):
+            return result
+        page += 1
+
+
+@app.command("devices")
+def list_devices(
+    ctx: typer.Context,
+    title: str = typer.Argument(help="OTA package title (case-insensitive)."),
+    version: str = typer.Option(None, "--version", "-v", help="Package version (exact)."),
+    type: str = typer.Option(None, "--type", "-t", help="FIRMWARE or SOFTWARE (both if omitted)."),
+    device_profile: str = typer.Option(
+        None, "--device-profile", "-p", help="Only devices of this profile (name or UUID)."
+    ),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+):
+    """List the devices that run an OTA package, directly or inherited from their profile."""
+    pkg_type = type.upper() if type else None
+    if pkg_type not in (None, "FIRMWARE", "SOFTWARE"):
+        typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
+        raise typer.Exit(1)
+
+    cfg_profile = ctx.obj["profile"]
+    profile_id = resolve_profile_id(cfg_profile, device_profile) if device_profile else None
+    customer = cfg.load(cfg_profile).get("customer_id")
+    api = device_api(cfg_profile)
+    try:
+        packages = {
+            p["id"]["id"]: p
+            for p in _all_pages(api, "/api/otaPackages")
+            if (p.get("title") or "").lower() == title.lower()
+            and (not version or p.get("version") == version)
+            and (not pkg_type or p.get("type") == pkg_type)
+        }
+        if not packages:
+            typer.echo(f"No OTA package '{title}' matches.", err=True)
+            raise typer.Exit(1)
+        try:
+            profiles = {p["id"]["id"]: p for p in _all_pages(api, "/api/deviceProfiles")}
+        except Exception as e:
+            if getattr(e, "status", None) != 403:
+                raise
+            typer.echo(
+                "Warning: device profiles are not readable with this login; "
+                "devices that inherit the package from their profile are not shown.",
+                err=True,
+            )
+            profiles = {pid: {"name": name} for pid, name in profile_name_map(api).items()}
+        devices_path = f"/api/customer/{customer}/devices" if customer else "/api/tenant/devices"
+        devices = _all_pages(api, devices_path)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        handle_api_error(e)
+
+    rows = []
+    for d in devices:
+        dp_id = (d.get("deviceProfileId") or {}).get("id")
+        if profile_id and dp_id != profile_id:
+            continue
+        profile = profiles.get(dp_id, {})
+        for field in ("firmwareId", "softwareId"):
+            ref = d.get(field) or profile.get(field)
+            pkg = packages.get((ref or {}).get("id"))
+            if pkg:
+                rows.append(
+                    {
+                        "id": d["id"]["id"],
+                        "name": d.get("name") or "",
+                        "deviceProfile": profile.get("name") or dp_id or "",
+                        "type": pkg.get("type") or "",
+                        "title": pkg.get("title") or "",
+                        "version": pkg.get("version") or "",
+                        "inherited": not d.get(field),
+                    }
+                )
+
+    if not rows:
+        typer.echo("[]" if output_json else "No devices found.")
+        return
+
+    if output_json:
+        typer.echo(json.dumps(rows, indent=2))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(show_header=True, header_style="bold")
+    for column in ("ID", "Name", "Device Profile", "Type", "Version", "Source"):
+        table.add_column(column)
+    for r in rows:
+        table.add_row(
+            r["id"],
+            r["name"],
+            r["deviceProfile"],
+            r["type"],
+            r["version"],
+            "profile" if r["inherited"] else "device",
+        )
+    console = Console()
+    console.print(table)
+    console.print(f"{len(rows)} device{'' if len(rows) == 1 else 's'}")

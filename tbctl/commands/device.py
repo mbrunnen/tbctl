@@ -69,6 +69,39 @@ def _customer_name(api, customer_id):
         return customer_id
 
 
+def _ota_label(api, ota_id):
+    try:
+        info = raw_get(api, f"/api/otaPackage/info/{ota_id}")
+    except Exception:
+        return f"{ota_id} (?)"
+    return f"{info.get('title') or ''} {info.get('version') or ''}"
+
+
+def _ota_rows(api, device):
+    """Firmware and software rows; a device without its own assignment inherits the profile's."""
+    profile = None
+    rows = []
+    for label, field in (("Firmware", "firmwareId"), ("Software", "softwareId")):
+        ref = device.get(field)
+        if ref:
+            rows.append((label, _ota_label(api, ref["id"])))
+            continue
+        profile_id = (device.get("deviceProfileId") or {}).get("id")
+        if profile is None and profile_id:
+            try:
+                profile = raw_get(api, f"/api/deviceProfile/{profile_id}")
+            except Exception:
+                profile = False
+        if profile is False:
+            rows.append((label, "? (device profile not readable)"))
+        elif profile and profile.get(field):
+            inherited = _ota_label(api, profile[field]["id"])
+            rows.append((label, f"{inherited} (inherited from profile)"))
+        else:
+            rows.append((label, "-"))
+    return rows
+
+
 @app.command("list")
 def list_devices(
     ctx: typer.Context,
@@ -244,6 +277,7 @@ def get_device(
         ("Type", data.get("type")),
         ("Label", data.get("label")),
         ("Created (UTC)", _fmt_ts(data.get("createdTime"))),
+        *_ota_rows(api, data),
     ]
     if token:
         rows.append(("Access token", data["accessToken"]))

@@ -16,7 +16,7 @@ and has JSON output everywhere.
 ```
 tbctl auth        login | refresh | status | logout
 tbctl config      show
-tbctl ota         list | get | upload | download | delete | assign | unassign
+tbctl ota         list | get | upload | download | delete | assign | unassign | devices
 tbctl device      list | get | create | update | delete | assign | profiles
 tbctl telemetry   keys | latest | history
 tbctl attributes  get

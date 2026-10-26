@@ -138,6 +138,8 @@ tbctl ota assign app-fw thermostat-01 --version 1.4.0 --type SOFTWARE
 tbctl ota assign <package-uuid> <device-uuid>
 tbctl ota unassign thermostat-01                            # clear the device's FIRMWARE assignment
 tbctl ota unassign thermostat-01 --type SOFTWARE
+tbctl ota devices app-fw                                    # devices that run app-fw
+tbctl ota devices app-fw --version 1.4.0 --type FIRMWARE --device-profile thermostat
 
 tbctl device list
 tbctl device list --search sensor --device-profile default --sort-by createdTime --sort-order DESC
@@ -145,7 +147,7 @@ tbctl device list --customer <customer-uuid> --token   # devices of a customer, 
 tbctl device list --json
 tbctl device profiles                                  # list device profiles
 tbctl device profiles --search sensor --json
-tbctl device get <device>
+tbctl device get <device>                              # includes firmware and software
 tbctl device get <device> --json
 tbctl device get <device> --token                      # include the access token
 tbctl device create sensor-1 --device-profile default --label Lobby
@@ -218,6 +220,12 @@ name in the current directory, and an existing file is only overwritten with
 to `FIRMWARE`; with a title, the newest version is used unless `--version` is
 given. `tbctl ota unassign` clears the device's `--type` assignment (default
 `FIRMWARE`).
+
+`tbctl ota devices` lists the devices that run a package, matched by title
+(ignoring case) and optionally by version and type. A device without its own
+assignment runs the package of its device profile; such rows show `profile` as
+the source. `tbctl device get` shows the same resolution for one device, marked
+`(inherited from profile)`.
 
 ## Claude Code skill
 

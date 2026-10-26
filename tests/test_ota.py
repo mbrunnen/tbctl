@@ -1435,3 +1435,148 @@ def test_list_version_device_profile_path_paginates():
     assert "id-2" not in result.output
     assert mock_api.get_ota_packages1.call_count == 2
     mock_api.get_ota_packages.assert_not_called()
+
+
+_PROFILE = "22222222-2222-2222-2222-222222222222"
+_OTHER_PROFILE = "33333333-3333-3333-3333-333333333333"
+
+
+def _pkg(pkg_id, title, version, pkg_type="FIRMWARE"):
+    return {"id": {"id": pkg_id}, "title": title, "version": version, "type": pkg_type}
+
+
+def _dev(dev_id, name, profile=_PROFILE, **slots):
+    return {
+        "id": {"id": dev_id},
+        "name": name,
+        "deviceProfileId": {"id": profile},
+        **{k: {"id": v} for k, v in slots.items()},
+    }
+
+
+def _fake_server(devices, devices_path="/api/tenant/devices"):
+    packages = [
+        _pkg("A", "ox1-app", "1.0"),
+        _pkg("B", "ox1-app", "2.0"),
+        _pkg("C", "other", "1.0"),
+        _pkg("S", "ox1-app", "1.0", "SOFTWARE"),
+    ]
+    profiles = [
+        {"id": {"id": _PROFILE}, "name": "sensor", "firmwareId": {"id": "A"}},
+        {"id": {"id": _OTHER_PROFILE}, "name": "gateway"},
+    ]
+    paths = {"/api/otaPackages": packages, "/api/deviceProfiles": profiles, devices_path: devices}
+
+    def raw_get(_api, path, query=None):
+        page = dict(query)["page"]
+        return {"data": paths[path] if page == 0 else [], "hasNext": False}
+
+    return raw_get
+
+
+_DEVICES = [
+    _dev("d1", "direct-2.0", firmwareId="B"),
+    _dev("d2", "inherits-1.0"),
+    _dev("d3", "other-fw", firmwareId="C"),
+    _dev("d4", "gateway", profile=_OTHER_PROFILE),
+    _dev("d5", "sw-direct", profile=_OTHER_PROFILE, softwareId="S"),
+]
+
+
+def _ota_devices(args, devices=_DEVICES, **kw):
+    with (
+        patch("tbctl.commands.ota.device_api"),
+        patch("tbctl.commands.ota.raw_get", side_effect=_fake_server(devices, **kw)),
+    ):
+        return runner.invoke(app, ["ota", "devices", *args])
+
+
+def test_devices_finds_direct_and_inherited():
+    result = _ota_devices(["ox1-app", "--json"])
+
+    assert result.exit_code == 0, result.output
+    rows = {r["name"]: r for r in json.loads(result.output)}
+    assert set(rows) == {"direct-2.0", "inherits-1.0", "sw-direct"}
+    assert rows["direct-2.0"] == {
+        "id": "d1",
+        "name": "direct-2.0",
+        "deviceProfile": "sensor",
+        "type": "FIRMWARE",
+        "title": "ox1-app",
+        "version": "2.0",
+        "inherited": False,
+    }
+    assert rows["inherits-1.0"]["inherited"] is True
+    assert rows["inherits-1.0"]["version"] == "1.0"
+
+
+def test_devices_filters_version_and_type():
+    result = _ota_devices(["OX1-APP", "--version", "1.0", "--type", "firmware", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert [r["name"] for r in json.loads(result.output)] == ["inherits-1.0"]
+
+
+def test_devices_filters_device_profile():
+    with patch("tbctl.commands.ota.resolve_profile_id", return_value=_OTHER_PROFILE):
+        result = _ota_devices(["ox1-app", "--device-profile", "gateway", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert [r["name"] for r in json.loads(result.output)] == ["sw-direct"]
+
+
+def test_devices_table():
+    result = _ota_devices(["ox1-app"])
+
+    assert result.exit_code == 0, result.output
+    out = _strip_ansi(result.output)
+    assert "inherits-1.0" in out
+    assert "profile" in out
+    assert "3 devices" in out
+
+
+def test_devices_unknown_package():
+    result = _ota_devices(["nope"])
+
+    assert result.exit_code == 1
+    assert "No OTA package 'nope'" in result.output
+
+
+def test_devices_uses_stored_customer(config_dir):
+    import tbctl.config as cfg
+
+    customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
+    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+
+    result = _ota_devices(["ox1-app", "--json"], devices_path=f"/api/customer/{customer}/devices")
+
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.output)) == 3
+
+
+def test_devices_without_profile_access_warns():
+    forbidden = Exception("403")
+    forbidden.status = 403
+    server = _fake_server(_DEVICES)
+
+    def raw_get(api, path, query=None):
+        if path == "/api/deviceProfiles":
+            raise forbidden
+        if path == "/api/deviceProfileInfos":
+            return {"data": [{"id": {"id": _PROFILE}, "name": "sensor"}]}
+        return server(api, path, query)
+
+    with (
+        patch("tbctl.commands.ota.device_api"),
+        patch("tbctl.commands.ota.raw_get", side_effect=raw_get),
+        patch("tbctl.commands._client.raw_get", side_effect=raw_get),
+    ):
+        result = runner.invoke(app, ["ota", "devices", "ox1-app", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert "not readable" in result.stderr
+    rows = json.loads(result.stdout)
+    assert [(r["name"], r["deviceProfile"]) for r in rows] == [
+        ("direct-2.0", "sensor"),
+        ("sw-direct", _OTHER_PROFILE),
+    ]
