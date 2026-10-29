@@ -27,6 +27,7 @@ class MemoryKeyring(keyring.backend.KeyringBackend):
 def config_dir(tmp_path, monkeypatch):
     """Redirect the config directory so no test reads the real user config."""
     monkeypatch.setattr("tbctl.config.CONFIG_DIR", tmp_path)
+    monkeypatch.setattr("tbctl.keycache.CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr("tbctl.config._warned", set(), raising=False)
     monkeypatch.setattr("tbctl.credentials._warned", set(), raising=False)
     return tmp_path

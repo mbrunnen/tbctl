@@ -16,6 +16,14 @@ app = typer.Typer(no_args_is_help=True, help="Read device attributes.")
 SCOPES = ("CLIENT_SCOPE", "SERVER_SCOPE", "SHARED_SCOPE")
 
 
+def normalise_scope(value: str) -> str | None:
+    """Map ``server``, ``Server`` or ``SERVER_SCOPE`` to ``SERVER_SCOPE``; ``None`` if unknown."""
+    scope = value.strip().upper()
+    if not scope.endswith("_SCOPE"):
+        scope += "_SCOPE"
+    return scope if scope in SCOPES else None
+
+
 @app.command("get")
 def get_attributes(
     ctx: typer.Context,

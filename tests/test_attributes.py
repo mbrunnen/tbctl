@@ -90,3 +90,13 @@ def test_get_api_exception():
 
     assert result.exit_code != 0
     assert "404" in result.output
+
+
+def test_normalise_scope():
+    from tbctl.commands.attributes import normalise_scope
+
+    for value in ("server", "Server", "server_scope", "SERVER_SCOPE"):
+        assert normalise_scope(value) == "SERVER_SCOPE"
+    assert normalise_scope("shared") == "SHARED_SCOPE"
+    assert normalise_scope("client") == "CLIENT_SCOPE"
+    assert normalise_scope("bogus") is None

@@ -99,12 +99,15 @@ def complete_device(ctx, incomplete: str) -> list[str]:
     profile comes from the root command's ``-c`` option, which sits several
     context levels up while completing a subcommand argument.
     """
-    profile = "default"
+    return sorted(a for a in load(active_profile(ctx)) if a.startswith(incomplete))
+
+
+def active_profile(ctx) -> str:
+    """Return the profile chosen by the root command's ``-c`` option, or ``default``."""
     node = ctx
     while node is not None:
         chosen = (node.params or {}).get("config")
         if chosen:
-            profile = chosen
-            break
+            return chosen
         node = node.parent
-    return sorted(a for a in load(profile) if a.startswith(incomplete))
+    return "default"
