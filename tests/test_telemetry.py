@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from tbctl import keycache
@@ -458,3 +459,159 @@ def test_history_json_device_without_keys():
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {}
+
+
+T1, T2 = 1_700_000_000_000, 1_700_000_060_000
+_TWO_KEYS = {
+    "temp": f"{{'temp': [{{'ts': {T1}, 'value': '21.5'}}, {{'ts': {T2}, 'value': '21.6'}}]}}",
+    "rsrp": f"{{'rsrp': [{{'ts': {T2}, 'value': '-103'}}]}}",
+}
+
+
+def _two_keys_api():
+    api = MagicMock()
+    api.get_timeseries.side_effect = lambda *a, **kw: _TWO_KEYS[kw["keys"]]
+    return api
+
+
+def _wide(args, api):
+    with (
+        patch("tbctl.commands.telemetry.telemetry_api", return_value=api),
+        patch("tbctl.commands.telemetry.resolve_device_id", return_value=DEVICE),
+    ):
+        return runner.invoke(app, args, env={"COLUMNS": "200"})
+
+
+def test_history_wide_table():
+    result = _wide(
+        ["telemetry", "history", DEVICE, "--keys", "temp,rsrp", "--last", "1h"], _two_keys_api()
+    )
+
+    assert result.exit_code == 0
+    lines = result.output.splitlines()
+    header = next(line for line in lines if "Timestamp (UTC)" in line)
+    assert header.index("rsrp") < header.index("temp")
+    row1 = next(line for line in lines if "2023-11-14 22:13:20" in line)
+    assert "21.5" in row1 and "-103" not in row1
+    row2 = next(line for line in lines if "2023-11-14 22:14:20" in line)
+    assert "21.6" in row2 and "-103" in row2
+
+
+def test_history_wide_table_desc():
+    result = _wide(
+        ["telemetry", "history", DEVICE, "--keys", "temp,rsrp", "--last", "1h", "--order", "desc"],
+        _two_keys_api(),
+    )
+
+    assert result.exit_code == 0
+    assert result.output.index("22:14:20") < result.output.index("22:13:20")
+
+
+LONG_LOG = '{"logtime":16801,"module":"eox_coap","level":1,"message":"' + "x" * 100 + '"}'
+
+
+def test_history_clips_long_values():
+    api = MagicMock()
+    api.get_timeseries.return_value = {"log": [{"ts": T1, "value": LONG_LOG}]}
+
+    table = _wide(["telemetry", "history", DEVICE, "--keys", "log", "--last", "1h"], api)
+    raw = _wide(["telemetry", "history", DEVICE, "--keys", "log", "--last", "1h", "--json"], api)
+
+    assert LONG_LOG[:39] + "…" in table.output
+    assert LONG_LOG not in table.output
+    assert json.loads(raw.output)["log"][0]["value"] == LONG_LOG
+
+
+def test_history_dict_value_is_compact_json():
+    api = MagicMock()
+    api.get_timeseries.return_value = {"cfg": [{"ts": T1, "value": {"a": 1}}]}
+
+    result = _wide(["telemetry", "history", DEVICE, "--keys", "cfg", "--last", "1h"], api)
+
+    assert '{"a":1}' in result.output
+
+
+def test_parse_interval():
+    import typer
+
+    assert telemetry._parse_interval("60000") == 60000
+    assert telemetry._parse_interval("5m") == 300000
+    assert telemetry._parse_interval("1h") == 3600000
+    with pytest.raises(typer.Exit):
+        telemetry._parse_interval("soon")
+
+
+def test_history_interval_duration_is_sent_in_ms():
+    api = MagicMock()
+    api.get_timeseries.return_value = "{}"
+
+    result = _invoke(
+        [
+            "telemetry",
+            "history",
+            DEVICE,
+            "--keys",
+            "temp",
+            "--last",
+            "1d",
+            "--agg",
+            "avg",
+            "--interval",
+            "1h",
+        ],
+        api,
+    )
+
+    assert result.exit_code == 0
+    kwargs = api.get_timeseries.call_args.kwargs
+    assert kwargs["agg"] == "AVG"
+    assert kwargs["interval"] == 3600000
+
+
+def test_history_rejects_bad_interval():
+    api = MagicMock()
+
+    result = _invoke(
+        ["telemetry", "history", DEVICE, "--keys", "temp", "--agg", "AVG", "--interval", "soon"],
+        api,
+    )
+
+    assert result.exit_code == 1
+    assert "--interval must be milliseconds or a duration like 5m." in result.output
+    api.get_timeseries.assert_not_called()
+
+
+def test_history_rejects_unknown_agg():
+    api = MagicMock()
+
+    result = _invoke(["telemetry", "history", DEVICE, "--keys", "temp", "--agg", "MEDIAN"], api)
+
+    assert result.exit_code != 0
+    api.get_timeseries.assert_not_called()
+
+
+def test_latest_local_header(monkeypatch):
+    import time
+
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    monkeypatch.setattr("tbctl.commands._format.time.time", lambda: T1 / 1000)
+    api = MagicMock()
+    api.get_latest_timeseries.return_value = f"{{'soc': [{{'ts': {T1}, 'value': '18'}}]}}"
+    try:
+        result = _wide(["telemetry", "latest", DEVICE, "--local"], api)
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
+
+    assert result.exit_code == 0
+    assert "Timestamp (+01:00)" in result.output
+    assert "2023-11-14 23:13:20" in result.output
+
+
+def test_history_help_lists_choices():
+    result = runner.invoke(app, ["telemetry", "history", "--help"], env={"COLUMNS": "200"})
+
+    assert "[ASC|DESC]" in result.output
+    assert "[MIN|MAX|AVG|SUM|COUNT|NONE]" in result.output
+    assert "FUNCTION" not in result.output

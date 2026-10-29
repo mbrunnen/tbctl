@@ -1,8 +1,9 @@
 import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import timezone
 
+import click
 import typer
 
 import tbctl.aliases as aliases
@@ -13,7 +14,7 @@ from tbctl.commands._client import (
     resolve_device_id,
     telemetry_api,
 )
-from tbctl.commands._format import fmt_ts
+from tbctl.commands._format import clip, fmt_ts, fmt_value, ts_header
 
 app = typer.Typer(no_args_is_help=True, help="Read device time-series telemetry.")
 
@@ -25,10 +26,23 @@ _REL_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 # the aggregation path stays a single request capped at one page.
 _PAGE_SIZE = 1_000
 _DEFAULT_WINDOW_MS = 24 * 3600 * 1000
+_AGGREGATIONS = ["MIN", "MAX", "AVG", "SUM", "COUNT", "NONE"]
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _parse_interval(value: str) -> int:
+    """Parse an aggregation interval into milliseconds: bare ms or a duration like 5m."""
+    value = value.strip()
+    if value.isdigit():
+        return int(value)
+    rel = _REL_RE.match(value)
+    if not rel:
+        typer.echo("--interval must be milliseconds or a duration like 5m.", err=True)
+        raise typer.Exit(1)
+    return int(rel.group(1)) * _REL_UNITS[rel.group(2).lower()] * 1000
 
 
 def _parse_time(value: str, now_ms: int) -> int:
@@ -54,7 +68,7 @@ def _parse_time(value: str, now_ms: int) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _plot(result) -> None:
+def _plot(result, local: bool) -> None:
     """Render telemetry series as a terminal line chart.
 
     Skips non-numeric points; exits with an error if no series has numeric data.
@@ -72,11 +86,7 @@ def _plot(result) -> None:
             except (TypeError, ValueError):
                 continue
             ys.append(value)
-            xs.append(
-                datetime.fromtimestamp(point["ts"] / 1000, tz=timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-            )
+            xs.append(fmt_ts(point["ts"], local)[:16])
         if ys:
             plt.plot(xs, ys, label=key)
             plotted = True
@@ -125,6 +135,9 @@ def latest(
         autocompletion=keycache.complete_timeseries_keys,
     ),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+    local: bool = typer.Option(
+        False, "--local", help="Show timestamps in local time instead of UTC."
+    ),
 ):
     profile = ctx.obj["profile"]
     device_id = resolve_device_id(profile, device)
@@ -150,13 +163,11 @@ def latest(
     table = Table(show_header=True, header_style="bold")
     table.add_column("Key")
     table.add_column("Value")
-    table.add_column("Timestamp (UTC)")
+    table.add_column(ts_header("Timestamp", local))
     for key in sorted(result):
         points = result[key] or [{}]
         point = points[0]
-        table.add_row(
-            key, str(point.get("value", "")), fmt_ts(point["ts"]) if point.get("ts") else "-"
-        )
+        table.add_row(key, fmt_value(point.get("value", "")), fmt_ts(point.get("ts"), local))
     Console().print(table)
 
 
@@ -217,15 +228,35 @@ def history(
     limit: int = typer.Option(
         None, "--limit", help="Max data points per key (default: fetch the full window)."
     ),
-    order: str = typer.Option("ASC", "--order", help="ASC or DESC."),
-    agg: str = typer.Option(None, "--agg", help="Aggregation: MIN, MAX, AVG, SUM, COUNT, NONE."),
-    interval: int = typer.Option(None, "--interval", help="Aggregation interval in ms."),
+    order: str = typer.Option(
+        "ASC",
+        "--order",
+        help="Sort order.",
+        metavar="[ASC|DESC]",
+        click_type=click.Choice(["ASC", "DESC"], case_sensitive=False),
+    ),
+    agg: str = typer.Option(
+        None,
+        "--agg",
+        help="Aggregation function.",
+        metavar=f"[{'|'.join(_AGGREGATIONS)}]",
+        click_type=click.Choice(
+            ["MIN", "MAX", "AVG", "SUM", "COUNT", "NONE"], case_sensitive=False
+        ),
+    ),
+    interval: str = typer.Option(
+        None, "--interval", help="Aggregation interval: milliseconds or a duration like 5m, 1h."
+    ),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
     plot: bool = typer.Option(False, "--plot", help="Render a terminal line chart."),
+    local: bool = typer.Option(
+        False, "--local", help="Show timestamps in local time instead of UTC."
+    ),
 ):
     if plot and output_json:
         typer.echo("--plot and --json are mutually exclusive.", err=True)
         raise typer.Exit(1)
+    interval_ms = _parse_interval(interval) if interval else None
 
     now_ms = _now_ms()
     count = None
@@ -295,7 +326,7 @@ def history(
                     keys=keys,
                     limit=str(effective_limit),
                     agg=agg,
-                    interval=interval,
+                    interval=interval_ms,
                     order_by=order,
                 )
             )
@@ -319,17 +350,24 @@ def history(
         return
 
     if plot:
-        _plot(result)
+        _plot(result, local)
         return
 
     from rich.console import Console
     from rich.table import Table
 
-    console = Console()
-    for key in sorted(result):
-        table = Table(show_header=True, header_style="bold", title=key)
-        table.add_column("Timestamp (UTC)")
-        table.add_column("Value")
-        for point in result[key]:
-            table.add_row(fmt_ts(point["ts"]), str(point.get("value", "")))
-        console.print(table)
+    keys = sorted(result)
+    rows: dict[int, dict] = {}
+    for key in keys:
+        for point in result[key] or []:
+            rows.setdefault(point["ts"], {})[key] = point.get("value", "")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column(ts_header("Timestamp", local), no_wrap=True)
+    for key in keys:
+        table.add_column(key)
+    for ts in sorted(rows, reverse=order == "DESC"):
+        row = rows[ts]
+        table.add_row(
+            fmt_ts(ts, local), *(clip(fmt_value(row[k])) if k in row else "" for k in keys)
+        )
+    Console().print(table)
