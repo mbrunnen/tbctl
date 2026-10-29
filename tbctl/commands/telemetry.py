@@ -12,6 +12,7 @@ from tbctl.commands._client import (
     resolve_device_id,
     telemetry_api,
 )
+from tbctl.commands._format import fmt_ts
 
 app = typer.Typer(no_args_is_help=True, help="Read device time-series telemetry.")
 
@@ -26,10 +27,6 @@ _PAGE_SIZE = 1_000
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _fmt_ts(ms) -> str:
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _parse_time(value: str, now_ms: int) -> int:
@@ -148,7 +145,7 @@ def latest(
         points = result[key] or [{}]
         point = points[0]
         table.add_row(
-            key, str(point.get("value", "")), _fmt_ts(point["ts"]) if point.get("ts") else "-"
+            key, str(point.get("value", "")), fmt_ts(point["ts"]) if point.get("ts") else "-"
         )
     Console().print(table)
 
@@ -311,5 +308,5 @@ def history(
         table.add_column("Timestamp (UTC)")
         table.add_column("Value")
         for point in result[key]:
-            table.add_row(_fmt_ts(point["ts"]), str(point.get("value", "")))
+            table.add_row(fmt_ts(point["ts"]), str(point.get("value", "")))
         console.print(table)

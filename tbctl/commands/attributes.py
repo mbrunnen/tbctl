@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 
 import typer
 
@@ -10,16 +9,11 @@ from tbctl.commands._client import (
     resolve_device_id,
     telemetry_api,
 )
+from tbctl.commands._format import fmt_ts
 
 app = typer.Typer(no_args_is_help=True, help="Read device attributes.")
 
 SCOPES = ("CLIENT_SCOPE", "SERVER_SCOPE", "SHARED_SCOPE")
-
-
-def _fmt_ts(ms) -> str:
-    if ms is None:
-        return "-"
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 @app.command("get")
@@ -68,6 +62,6 @@ def get_attributes(
         table.add_row(
             str(a.get("key", "")),
             str(a.get("value", "")),
-            _fmt_ts(a.get("lastUpdateTs")),
+            fmt_ts(a.get("lastUpdateTs")),
         )
     Console().print(table)
