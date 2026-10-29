@@ -32,8 +32,10 @@ uv run ruff format --check tbctl/ tests/  # format check
 - `tbctl/credentials.py` - the credential: `TBCTL_TOKEN` (an API key), else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; the secret is a JSON JWT pair (`auth = "jwt"`) or an API key (`auth = "api-key"`); a secret without `auth` counts as not logged in
 - `tbctl/session.py` - login (username/password -> JWT pair), renewal via the refresh token under a per-profile lock when the access token has under a minute left (`ensure_fresh`, called by `_configuration`, returns token and header prefix), logout
 - `tbctl/aliases.py` - local per-profile device aliases (`[aliases]` in the profile file), resolved by `resolve_device_id` and offered as shell completion on every `<device>` argument
+- `tbctl/keycache.py` - telemetry and attribute keys seen per device, in `~/.cache/tbctl/<profile>/keys.json`, so `--keys` completion stays local
 - `tbctl/commands/` - one module per subcommand group (`auth.py`, `config_cmd.py`, `ota.py`, `device.py`, `alias.py`, `telemetry.py`, `attributes.py`)
 - `tbctl/commands/_client.py` - shared helpers for the telemetry/attributes commands: authenticated client builders, `resolve_device_id` (UUID or name lookup), `handle_api_error`, and `parse_response`
+- `tbctl/commands/_format.py` - timestamp (UTC or `--local`), value and cell-width formatting shared by the telemetry/attributes tables
 - `generated/tb_client/` - Python client generated from `openapi-4.3.0.1PE.json` by `./generate.sh` (gitignored; run it once before installing or testing)
 
 The generated client returns telemetry and attribute endpoints as a Python `repr` string (single-quoted, not valid JSON). `parse_response` coerces these via `json.loads` then `ast.literal_eval`; wrap every such response in it.

@@ -164,14 +164,22 @@ tbctl telemetry latest ruedi --keys temperature   # aliases work as <device>
 
 tbctl telemetry keys <device>
 tbctl telemetry latest <device> --keys temperature,humidity
-tbctl telemetry history <device> --keys temperature --last 24h
+tbctl telemetry latest <device> --local                  # local time instead of UTC
+tbctl telemetry history <device>                         # all keys, last 24h
+tbctl telemetry history <device> --keys temperature --last 7d
 tbctl telemetry history <device> --keys temperature --last 20   # the 20 newest points
 tbctl telemetry history <device> --keys temperature --start 2026-06-01 --end 2026-06-25
+tbctl telemetry history <device> --keys temperature --last 7d --agg avg --interval 1h
 tbctl telemetry history <device> --keys temperature --last 7d --plot
 
-tbctl attributes get <device>
-tbctl attributes get <device> --scope SERVER_SCOPE --keys fwVersion
+tbctl attributes get <device>                            # shared scope
+tbctl attributes get <device> --scope server --keys fwVersion
 ```
+
+`telemetry history` shows one table with a column per key; values longer
+than 40 characters are cut, and `--json` keeps them whole. `--keys`
+completes the keys tbctl has already seen for that device; run
+`tbctl telemetry keys <device>` once to fill the cache.
 
 `<device>` accepts a device UUID, a device name, or a local alias. Name
 resolution needs tenant device-read permission, or a customer login (which
