@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from tbctl import keycache
 from tbctl.cli import app
 from tbctl.commands import telemetry
 
@@ -228,14 +229,130 @@ def test_history_plot_and_json_conflict():
     api.get_timeseries.assert_not_called()
 
 
-def test_history_requires_start_or_last():
+NOW_MS = 1_700_000_000_000
+DAY_MS = 86_400_000
+
+
+def test_history_defaults_to_all_keys_last_24h(monkeypatch):
+    monkeypatch.setattr(telemetry, "_now_ms", lambda: NOW_MS)
     api = MagicMock()
+    api.get_timeseries_keys.return_value = "['rsrp', 'soc']"
+    api.get_timeseries.return_value = "{}"
 
-    result = _invoke(["telemetry", "history", DEVICE, "--keys", "temperature"], api)
+    result = _invoke(["telemetry", "history", DEVICE], api)
 
-    assert result.exit_code != 0
-    assert "Provide --start or --last" in result.output
+    assert result.exit_code == 0
+    assert [c.kwargs["keys"] for c in api.get_timeseries.call_args_list] == ["rsrp", "soc"]
+    args, _ = api.get_timeseries.call_args
+    assert args[2] == NOW_MS - DAY_MS
+    assert args[3] == NOW_MS
+
+
+def test_history_end_alone_spans_the_day_before():
+    api = MagicMock()
+    api.get_timeseries.return_value = "{}"
+
+    result = _invoke(
+        ["telemetry", "history", DEVICE, "--keys", "temperature", "--end", str(NOW_MS)], api
+    )
+
+    assert result.exit_code == 0
+    args, _ = api.get_timeseries.call_args
+    assert args[2] == NOW_MS - DAY_MS
+    assert args[3] == NOW_MS
+
+
+def test_history_device_without_keys():
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "[]"
+
+    result = _invoke(["telemetry", "history", DEVICE], api)
+
+    assert result.exit_code == 0
+    assert "No telemetry found in the given range." in result.output
     api.get_timeseries.assert_not_called()
+
+
+def test_history_last_count_without_keys_uses_all_keys():
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "['rsrp', 'soc']"
+    api.get_timeseries.return_value = "{}"
+
+    result = _invoke(["telemetry", "history", DEVICE, "--last", "20"], api)
+
+    assert result.exit_code == 0
+    api.get_timeseries.assert_called_once()
+    assert api.get_timeseries.call_args.kwargs["keys"] == "rsrp,soc"
+
+
+def test_keys_fills_cache():
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "['humidity', 'temperature']"
+
+    _invoke(["telemetry", "keys", DEVICE], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["humidity", "temperature"]
+
+
+def test_keys_cache_is_indexed_by_the_typed_name():
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "['rsrp']"
+
+    _invoke(["telemetry", "keys", "OX1DEV-FOGMAZ"], api)
+
+    assert keycache.lookup("default", "OX1DEV-FOGMAZ", keycache.TIMESERIES) == ["rsrp"]
+
+
+def test_history_without_keys_replaces_cache():
+    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "['rsrp']"
+    api.get_timeseries.return_value = "{}"
+
+    _invoke(["telemetry", "history", DEVICE], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["rsrp"]
+
+
+def test_history_with_keys_adds_to_cache():
+    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    api = MagicMock()
+    api.get_timeseries.return_value = "{'temperature': [{'ts': 1700000000000, 'value': '21.5'}]}"
+
+    _invoke(["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "1h"], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["a", "temperature"]
+
+
+def test_latest_without_keys_replaces_cache():
+    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    api = MagicMock()
+    api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
+
+    _invoke(["telemetry", "latest", DEVICE], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["soc"]
+
+
+def test_latest_with_keys_adds_to_cache():
+    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    api = MagicMock()
+    api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
+
+    _invoke(["telemetry", "latest", DEVICE, "--keys", "soc"], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["a", "soc"]
+
+
+def test_failed_call_writes_no_cache():
+    from tb_client.exceptions import ApiException
+
+    api = MagicMock()
+    api.get_timeseries_keys.side_effect = ApiException(status=403, reason="Forbidden")
+
+    _invoke(["telemetry", "keys", DEVICE], api)
+
+    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == []
 
 
 _TWO_POINTS_DESC = (
@@ -331,3 +448,13 @@ def test_keys_api_exception():
 
     assert result.exit_code != 0
     assert "403" in result.output
+
+
+def test_history_json_device_without_keys():
+    api = MagicMock()
+    api.get_timeseries_keys.return_value = "[]"
+
+    result = _invoke(["telemetry", "history", DEVICE, "--json"], api)
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {}

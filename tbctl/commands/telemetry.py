@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import typer
 
 import tbctl.aliases as aliases
+from tbctl import keycache
 from tbctl.commands._client import (
     handle_api_error,
     parse_response,
@@ -23,6 +24,7 @@ _REL_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 # A raw series without --limit is exhausted by paging on the timestamp cursor;
 # the aggregation path stays a single request capped at one page.
 _PAGE_SIZE = 1_000
+_DEFAULT_WINDOW_MS = 24 * 3600 * 1000
 
 
 def _now_ms() -> int:
@@ -101,6 +103,7 @@ def list_keys(
         keys = parse_response(telemetry_api(profile).get_timeseries_keys("DEVICE", device_id))
     except Exception as e:
         handle_api_error(e)
+    keycache.record(profile, device, device_id, keycache.TIMESERIES, keys, full=True)
 
     if output_json:
         typer.echo(json.dumps(keys, indent=2, default=str))
@@ -114,7 +117,13 @@ def latest(
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
-    keys: str = typer.Option(None, "--keys", "-k", help="Comma-separated telemetry keys."),
+    keys: str = typer.Option(
+        None,
+        "--keys",
+        "-k",
+        help="Comma-separated telemetry keys.",
+        autocompletion=keycache.complete_timeseries_keys,
+    ),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     profile = ctx.obj["profile"]
@@ -125,6 +134,7 @@ def latest(
         )
     except Exception as e:
         handle_api_error(e)
+    keycache.record(profile, device, device_id, keycache.TIMESERIES, result, full=not keys)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))
@@ -187,7 +197,13 @@ def history(
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
-    keys: str = typer.Option(..., "--keys", "-k", help="Comma-separated telemetry keys."),
+    keys: str = typer.Option(
+        None,
+        "--keys",
+        "-k",
+        help="Comma-separated telemetry keys (default: all keys).",
+        autocompletion=keycache.complete_timeseries_keys,
+    ),
     start: str = typer.Option(
         None, "--start", help="Start time: epoch ms, ISO date, or offset like 7d."
     ),
@@ -195,7 +211,8 @@ def history(
     last: str = typer.Option(
         None,
         "--last",
-        help="Window ending now, e.g. 7d, 24h, 30m; a bare count means the newest N points.",
+        help="Window ending now, e.g. 7d, 24h, 30m; a bare count means the newest N points "
+        "(default: 24h).",
     ),
     limit: int = typer.Option(
         None, "--limit", help="Max data points per key (default: fetch the full window)."
@@ -229,17 +246,21 @@ def history(
         start_ms = _parse_time(last, now_ms)
         end_ms = now_ms
     else:
-        if not start:
-            typer.echo("Provide --start or --last.", err=True)
-            raise typer.Exit(1)
-        start_ms = _parse_time(start, now_ms)
         end_ms = _parse_time(end, now_ms) if end else now_ms
+        start_ms = _parse_time(start, now_ms) if start else end_ms - _DEFAULT_WINDOW_MS
 
     profile = ctx.obj["profile"]
     device_id = resolve_device_id(profile, device)
     api = telemetry_api(profile)
+    full = not keys
     try:
-        if count:
+        if full:
+            all_keys = parse_response(api.get_timeseries_keys("DEVICE", device_id))
+            keycache.record(profile, device, device_id, keycache.TIMESERIES, all_keys, full=True)
+            keys = ",".join(all_keys)
+        if not keys:
+            result = {}
+        elif count:
             # Ask the server for the tail, then restore the requested display order.
             result = parse_response(
                 api.get_timeseries(
@@ -286,6 +307,8 @@ def history(
                 )
     except Exception as e:
         handle_api_error(e)
+    if not full:
+        keycache.record(profile, device, device_id, keycache.TIMESERIES, result, full=False)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))
