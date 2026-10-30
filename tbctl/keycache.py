@@ -91,3 +91,32 @@ def complete_attribute_keys(ctx, incomplete: str) -> list[str]:
 
     scope = normalise_scope((ctx.params or {}).get("scope") or "shared")
     return _complete(ctx, incomplete, scope) if scope else []
+
+
+def _writable(ctx, incomplete: str, given: set[str]) -> list[str]:
+    from tbctl.commands.attributes import normalise_scope, protected_keys
+
+    params = ctx.params or {}
+    device = params.get("device")
+    scope = normalise_scope(params.get("scope") or "shared")
+    if not device or scope in (None, "CLIENT_SCOPE"):
+        return []
+    profile = aliases.active_profile(ctx)
+    protected = protected_keys(profile)
+    return [
+        k
+        for k in lookup(profile, device, scope)
+        if k.startswith(incomplete) and k not in protected and k not in given
+    ]
+
+
+def complete_writable_keys(ctx, incomplete: str) -> list[str]:
+    return _writable(ctx, incomplete, set((ctx.params or {}).get("keys") or ()))
+
+
+def complete_writable_pairs(ctx, incomplete: str) -> list[str]:
+    given = {
+        p[0] if isinstance(p, tuple) else p.partition("=")[0]
+        for p in (ctx.params or {}).get("pairs") or ()
+    }
+    return [f"{k}=" for k in _writable(ctx, incomplete, given)]

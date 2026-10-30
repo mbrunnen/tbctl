@@ -184,6 +184,7 @@ def set_attributes(
     pairs: list[str] = typer.Argument(
         help="key=value pairs; a value is parsed as JSON, else taken as text.",
         callback=_parse_pairs,
+        autocompletion=keycache.complete_writable_pairs,
     ),
     scope: str = _scope_option(),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
@@ -211,7 +212,9 @@ def delete_attributes(
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
-    keys: list[str] = typer.Argument(help="Attribute keys to delete."),
+    keys: list[str] = typer.Argument(
+        help="Attribute keys to delete.", autocompletion=keycache.complete_writable_keys
+    ),
     scope: str = _scope_option(),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):

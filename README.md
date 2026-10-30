@@ -174,12 +174,24 @@ tbctl telemetry history <device> --keys temperature --last 7d --plot
 
 tbctl attributes get <device>                            # shared scope
 tbctl attributes get <device> --scope server --keys fwVersion
+tbctl attributes keys <device> --scope server
+tbctl attributes set <device> mode=eco interval=300      # values are JSON, else text
+tbctl attributes delete <device> mode --yes
 ```
 
 `telemetry history` shows one table with a column per key; values longer
 than 40 characters are cut, and `--json` keeps them whole. `--keys`
 completes the keys tbctl has already seen for that device; run
 `tbctl telemetry keys <device>` once to fill the cache.
+
+`attributes set` and `attributes delete` write the shared scope unless
+`--scope server` is given; client attributes belong to the device and cannot
+be written. List keys that must never change in the profile, and both
+commands refuse them before anything is sent:
+
+```toml
+protected_attributes = ["iccid", "imei"]
+```
 
 `<device>` accepts a device UUID, a device name, or a local alias. Name
 resolution needs tenant device-read permission, or a customer login (which

@@ -5,18 +5,18 @@ import pytest
 import typer
 
 import tbctl.aliases as aliases
-from tbctl import keycache
+from tbctl import config, keycache
 from tbctl.cli import app
 
 UUID = "11111111-2222-3333-4444-555555555555"
 
 
-def _ctx(command, params, profile=None):
-    """Build a Click context tree as shell completion sees it for ``telemetry <command>``."""
+def _ctx(command, params, profile=None, group="telemetry"):
+    """Build a Click context tree as shell completion sees it for ``<group> <command>``."""
     root = typer.main.get_command(app)
     root_ctx = click.Context(root)
     root_ctx.params = {"config": profile} if profile else {}
-    group_ctx = click.Context(root.commands["telemetry"], parent=root_ctx)
+    group_ctx = click.Context(root.commands[group], parent=root_ctx)
     ctx = click.Context(group_ctx.command.commands[command], parent=group_ctx)
     ctx.params = params
     return ctx
@@ -139,3 +139,29 @@ def test_alias_by_name_resolves_through_the_device_name():
     aliases.add("p", "ruedi", "OX1-Y2HUZR")
     keycache.record("p", "OX1-Y2HUZR", UUID, keycache.TIMESERIES, ["rsrp"], full=True)
     assert keycache.lookup("p", "ruedi", keycache.TIMESERIES) == ["rsrp"]
+
+
+def test_complete_writable_keys_drops_protected():
+    config.save({"protected_attributes": ["iccid"]})
+    keycache.record("default", "dev1", UUID, "SERVER_SCOPE", ["iccid", "mode"], full=True)
+    ctx = _ctx("delete", {"device": "dev1", "scope": "server", "keys": None}, group="attributes")
+    assert keycache.complete_writable_keys(ctx, "") == ["mode"]
+
+
+def test_complete_writable_keys_skips_given():
+    keycache.record("default", "dev1", UUID, "SHARED_SCOPE", ["a", "b"], full=True)
+    ctx = _ctx("delete", {"device": "dev1", "keys": ("a",)}, group="attributes")
+    assert keycache.complete_writable_keys(ctx, "") == ["b"]
+
+
+@pytest.mark.parametrize("given", [[("a", 1)], ["a=1"]])
+def test_complete_writable_pairs_adds_equals_and_skips_given(given):
+    keycache.record("default", "dev1", UUID, "SHARED_SCOPE", ["a", "b"], full=True)
+    ctx = _ctx("set", {"device": "dev1", "pairs": given}, group="attributes")
+    assert keycache.complete_writable_pairs(ctx, "") == ["b="]
+
+
+def test_complete_writable_keys_client_scope_is_empty():
+    keycache.record("default", "dev1", UUID, "CLIENT_SCOPE", ["a"], full=True)
+    ctx = _ctx("delete", {"device": "dev1", "scope": "client"}, group="attributes")
+    assert keycache.complete_writable_keys(ctx, "") == []
