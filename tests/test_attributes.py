@@ -164,3 +164,34 @@ def test_normalise_scope():
     assert normalise_scope("shared") == "SHARED_SCOPE"
     assert normalise_scope("client") == "CLIENT_SCOPE"
     assert normalise_scope("bogus") is None
+
+
+def test_keys_defaults_to_shared_and_fills_cache():
+    api = MagicMock()
+    api.get_attribute_keys_by_scope.return_value = "['b', 'a']"
+
+    result = _invoke(["attributes", "keys", DEVICE], api)
+
+    assert result.exit_code == 0
+    assert result.output == "a\nb\n"
+    api.get_attribute_keys_by_scope.assert_called_once_with("DEVICE", DEVICE, "SHARED_SCOPE")
+    assert keycache.lookup("default", DEVICE, "SHARED_SCOPE") == ["a", "b"]
+
+
+def test_keys_server_scope_json():
+    api = MagicMock()
+    api.get_attribute_keys_by_scope.return_value = "['iccid']"
+
+    result = _invoke(["attributes", "keys", DEVICE, "--scope", "server", "--json"], api)
+
+    assert json.loads(result.output) == ["iccid"]
+    api.get_attribute_keys_by_scope.assert_called_once_with("DEVICE", DEVICE, "SERVER_SCOPE")
+
+
+def test_keys_empty():
+    api = MagicMock()
+    api.get_attribute_keys_by_scope.return_value = "[]"
+
+    result = _invoke(["attributes", "keys", DEVICE], api)
+
+    assert "No shared attribute keys found." in result.output
