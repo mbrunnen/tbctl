@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from tbctl import keycache
+from tbctl import config, keycache
 from tbctl.cli import app
 
 runner = CliRunner()
@@ -195,3 +195,75 @@ def test_keys_empty():
     result = _invoke(["attributes", "keys", DEVICE], api)
 
     assert "No shared attribute keys found." in result.output
+
+
+def _profile(protected):
+    config.save({"protected_attributes": protected})
+
+
+def test_set_parses_json_values_into_one_call():
+    api = MagicMock()
+    pairs = ["n=21", "b=true", 'o={"a":1}', 's="21"', "t=hello", "e=a=b", "z="]
+
+    result = _invoke(["attributes", "set", DEVICE, *pairs], api)
+
+    assert result.exit_code == 0
+    api.save_device_attributes.assert_called_once()
+    device_id, scope, body = api.save_device_attributes.call_args.args
+    assert (device_id, scope) == (DEVICE, "SHARED_SCOPE")
+    assert json.loads(body) == {
+        "n": 21,
+        "b": True,
+        "o": {"a": 1},
+        "s": "21",
+        "t": "hello",
+        "e": "a=b",
+        "z": "",
+    }
+    assert "shared" in result.output
+
+
+def test_set_json_prints_written_dict():
+    result = _invoke(["attributes", "set", DEVICE, "a=1", "a=2", "--json"], MagicMock())
+
+    assert json.loads(result.output) == {"a": 2}
+
+
+@pytest.mark.parametrize("pair", ["novalue", "=1"])
+def test_set_rejects_bad_pair(pair):
+    api = MagicMock()
+
+    result = _invoke(["attributes", "set", DEVICE, pair], api)
+
+    assert result.exit_code == 2
+    assert "is not key=value" in result.output
+    api.save_device_attributes.assert_not_called()
+
+
+def test_set_refuses_client_scope():
+    api = MagicMock()
+
+    result = _invoke(["attributes", "set", DEVICE, "a=1", "--scope", "client"], api)
+
+    assert result.exit_code == 1
+    assert "use --scope server or shared" in result.output
+    api.save_device_attributes.assert_not_called()
+
+
+def test_set_refuses_protected_key_and_writes_nothing():
+    _profile(["iccid", "imei"])
+    api = MagicMock()
+
+    result = _invoke(["attributes", "set", DEVICE, "a=1", "imei=2", "--scope", "server"], api)
+
+    assert result.exit_code == 1
+    assert "imei" in result.output
+    api.save_device_attributes.assert_not_called()
+
+
+def test_protected_attributes_as_string_is_one_key():
+    _profile("iccid")
+    api = MagicMock()
+
+    assert _invoke(["attributes", "set", DEVICE, "i=1"], api).exit_code == 0
+    assert _invoke(["attributes", "set", DEVICE, "iccid=1"], api).exit_code == 1

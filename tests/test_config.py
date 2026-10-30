@@ -125,6 +125,12 @@ def test_load_warns_about_unknown_key(config_dir, capsys):
     assert "secret" not in err
 
 
+def test_protected_attributes_is_a_known_key(config_dir, capsys):
+    cfg.save({"protected_attributes": ["iccid"]}, "default")
+    assert cfg.load("default")["protected_attributes"] == ["iccid"]
+    assert "unknown key" not in capsys.readouterr().err
+
+
 def test_load_warns_once_per_key(config_dir, capsys):
     cfg.save({"url": "u", "colour": "x"}, "default")
     cfg.load("default")

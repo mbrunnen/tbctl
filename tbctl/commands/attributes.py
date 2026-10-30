@@ -1,9 +1,10 @@
 import json
+from collections.abc import Iterable
 
 import typer
 
 import tbctl.aliases as aliases
-from tbctl import keycache
+from tbctl import config, keycache
 from tbctl.commands._client import (
     handle_api_error,
     parse_response,
@@ -40,6 +41,45 @@ def _scope_or_exit(scope: str) -> str:
 
 def _short(scope: str) -> str:
     return scope.removesuffix("_SCOPE").lower()
+
+
+def _write_scope(scope: str) -> str:
+    canonical = _scope_or_exit(scope)
+    if canonical == "CLIENT_SCOPE":
+        typer.echo(
+            "Client attributes are written by the device; use --scope server or shared.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return canonical
+
+
+def protected_keys(profile: str) -> set[str]:
+    protected = config.load(profile).get("protected_attributes", [])
+    return {protected} if isinstance(protected, str) else set(protected)
+
+
+def _refuse_protected(profile: str, keys: Iterable[str]) -> None:
+    hits = protected_keys(profile).intersection(keys)
+    if hits:
+        typer.echo(
+            f"Refusing to change protected attribute(s): {', '.join(sorted(hits))}.", err=True
+        )
+        raise typer.Exit(1)
+
+
+def _parse_pairs(pairs: list[str]) -> list[tuple[str, object]]:
+    parsed = []
+    for pair in pairs:
+        key, sep, raw = pair.partition("=")
+        if not sep or not key:
+            raise typer.BadParameter(f"'{pair}' is not key=value.")
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            value = raw
+        parsed.append((key, value))
+    return parsed
 
 
 def _scope_option() -> typer.models.OptionInfo:
@@ -133,3 +173,33 @@ def list_keys(
         typer.echo(json.dumps(keys, indent=2, default=str))
         return
     typer.echo("\n".join(sorted(keys)) if keys else f"No {_short(canonical)} attribute keys found.")
+
+
+@app.command("set")
+def set_attributes(
+    ctx: typer.Context,
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
+    pairs: list[str] = typer.Argument(
+        help="key=value pairs; a value is parsed as JSON, else taken as text.",
+        callback=_parse_pairs,
+    ),
+    scope: str = _scope_option(),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
+):
+    canonical = _write_scope(scope)
+    data = dict(pairs)
+    profile = ctx.obj["profile"]
+    _refuse_protected(profile, data)
+    device_id = resolve_device_id(profile, device)
+    try:
+        telemetry_api(profile).save_device_attributes(device_id, canonical, json.dumps(data))
+    except Exception as e:
+        handle_api_error(e)
+    keycache.record(profile, device, device_id, canonical, data, full=False)
+
+    if output_json:
+        typer.echo(json.dumps(data, indent=2, default=str))
+        return
+    typer.echo(f"Set {', '.join(data)} on {device} ({_short(canonical)}).")
