@@ -25,6 +25,10 @@ def make_api_client(configuration):
     class _TbApiClient(ApiClient):
         def param_serialize(self, *args, **kwargs):
             method, url, header_params, body, post_params = super().param_serialize(*args, **kwargs)
+            # The spec types JSON request bodies as strings and the REST layer
+            # encodes them again; send the object instead.
+            if isinstance(body, str) and "json" in header_params.get("Content-Type", ""):
+                body = json.loads(body)
             return method, _URI_TEMPLATE_RE.sub("", url), header_params, body, post_params
 
     return _TbApiClient(configuration=configuration)

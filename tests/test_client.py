@@ -34,6 +34,20 @@ def test_api_client_strips_uri_template():
     assert url == "https://tb.example/api/foo?keys=temp"
 
 
+def test_save_attributes_sends_the_json_object_once():
+    from unittest.mock import MagicMock
+
+    from tb_client.api.telemetry_controller_api import TelemetryControllerApi
+    from tb_client.configuration import Configuration
+
+    client = make_api_client(Configuration(host="https://tb.example"))
+    request = client.rest_client.pool_manager.request = MagicMock(return_value=_device_response({}))
+    TelemetryControllerApi(client).save_device_attributes_without_preload_content(
+        "11111111-2222-3333-4444-555555555555", "SHARED_SCOPE", '{"a": 1}'
+    )
+    assert json.loads(request.call_args.kwargs["body"]) == {"a": 1}
+
+
 def test_parse_response_json():
     assert parse_response('{"a": 1}') == {"a": 1}
 
