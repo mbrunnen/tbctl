@@ -17,12 +17,12 @@ ATTRS = (
 )
 
 
-def _invoke(args, api):
+def _invoke(args, api, input=None):
     with (
         patch("tbctl.commands.attributes.telemetry_api", return_value=api),
         patch("tbctl.commands.attributes.resolve_device_id", return_value=DEVICE),
     ):
-        return runner.invoke(app, args)
+        return runner.invoke(app, args, input=input)
 
 
 def test_get_defaults_to_shared_scope():
@@ -267,3 +267,52 @@ def test_protected_attributes_as_string_is_one_key():
 
     assert _invoke(["attributes", "set", DEVICE, "i=1"], api).exit_code == 0
     assert _invoke(["attributes", "set", DEVICE, "iccid=1"], api).exit_code == 1
+
+
+def test_delete_with_yes():
+    api = MagicMock()
+
+    result = _invoke(["attributes", "delete", DEVICE, "a", "b", "-y"], api)
+
+    assert result.exit_code == 0
+    assert "Deleted a, b" in result.output
+    api.delete_device_attributes.assert_called_once_with(DEVICE, "SHARED_SCOPE", {}, keys="a,b")
+
+
+def test_delete_asks_first():
+    api = MagicMock()
+
+    result = _invoke(["attributes", "delete", DEVICE, "a"], api, input="y\n")
+
+    assert result.exit_code == 0
+    assert "Delete a from" in result.output
+    api.delete_device_attributes.assert_called_once()
+
+
+def test_delete_declined_does_nothing():
+    api = MagicMock()
+
+    result = _invoke(["attributes", "delete", DEVICE, "a"], api, input="n\n")
+
+    assert result.exit_code != 0
+    api.delete_device_attributes.assert_not_called()
+
+
+def test_delete_refuses_protected_key():
+    _profile(["iccid"])
+    api = MagicMock()
+
+    result = _invoke(["attributes", "delete", DEVICE, "a", "iccid", "-y"], api)
+
+    assert result.exit_code == 1
+    assert "iccid" in result.output
+    api.delete_device_attributes.assert_not_called()
+
+
+def test_delete_refuses_client_scope():
+    api = MagicMock()
+
+    result = _invoke(["attributes", "delete", DEVICE, "a", "--scope", "client", "-y"], api)
+
+    assert result.exit_code == 1
+    api.delete_device_attributes.assert_not_called()

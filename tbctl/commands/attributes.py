@@ -203,3 +203,29 @@ def set_attributes(
         typer.echo(json.dumps(data, indent=2, default=str))
         return
     typer.echo(f"Set {', '.join(data)} on {device} ({_short(canonical)}).")
+
+
+@app.command("delete")
+def delete_attributes(
+    ctx: typer.Context,
+    device: str = typer.Argument(
+        help="Device UUID or name.", autocompletion=aliases.complete_device
+    ),
+    keys: list[str] = typer.Argument(help="Attribute keys to delete."),
+    scope: str = _scope_option(),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+):
+    canonical = _write_scope(scope)
+    profile = ctx.obj["profile"]
+    _refuse_protected(profile, keys)
+    device_id = resolve_device_id(profile, device)
+    names = ", ".join(keys)
+    if not yes:
+        typer.confirm(f"Delete {names} from {device} ({_short(canonical)})?", abort=True)
+    try:
+        telemetry_api(profile).delete_device_attributes(
+            device_id, canonical, {}, keys=",".join(keys)
+        )
+    except Exception as e:
+        handle_api_error(e)
+    typer.echo(f"Deleted {names} from {device} ({_short(canonical)}).")
