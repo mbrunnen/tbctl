@@ -11,6 +11,13 @@ tbctl --install-completion
 exec zsh
 ```
 
+`--install-completion` detects the current shell. To generate the script for a
+named shell instead, e.g. for packaging, use `tbctl completion`:
+
+```sh
+tbctl completion bash > ~/.local/share/bash-completion/completions/tbctl
+```
+
 ### Testing pre-releases
 
 Release candidates are published to TestPyPI. Install one with the extra index

@@ -15,6 +15,7 @@ uv sync                 # install deps into venv
 uv run tbctl            # run the CLI during development
 uv tool install .       # install the CLI globally
 tbctl --install-completion  # install completion for the current shell (zsh -> ~/.zfunc/_tbctl)
+tbctl completion <shell>    # print the completion script for a named shell
 
 uv run pytest                                        # run all tests
 uv run pytest tests/test_ota.py::test_delete        # run a single test
@@ -27,7 +28,7 @@ uv run ruff format --check tbctl/ tests/  # format check
 
 ## Architecture
 
-- `tbctl/cli.py` - root Typer app
+- `tbctl/cli.py` - root Typer app and `completion <shell>`
 - `tbctl/config.py` - reads/writes `~/.config/tbctl/<profile>.toml` (url, aliases, auth, refresh_expires, customer_id for a customer user, protected_attributes that `attributes set`/`delete` refuse, token on fallback) with mode 0600; warns about any other key
 - `tbctl/credentials.py` - the credential: `TBCTL_TOKEN` (an API key), else the Secret Service via `keyring` (service `tbctl`, user = profile), else `token` in the TOML; the secret is a JSON JWT pair (`auth = "jwt"`) or an API key (`auth = "api-key"`); a secret without `auth` counts as not logged in
 - `tbctl/session.py` - login (username/password -> JWT pair), renewal via the refresh token under a per-profile lock when the access token has under a minute left (`ensure_fresh`, called by `_configuration`, returns token and header prefix), logout

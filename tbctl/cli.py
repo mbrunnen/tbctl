@@ -1,4 +1,7 @@
+from enum import Enum
+
 import typer
+from typer._completion_shared import get_completion_script
 
 import tbctl.config as cfg
 from tbctl.commands import alias, attributes, auth, config_cmd, device, ota, telemetry
@@ -32,6 +35,22 @@ def callback(
 ):
     ctx.ensure_object(dict)
     ctx.obj["profile"] = config
+
+
+class Shell(str, Enum):
+    bash = "bash"
+    zsh = "zsh"
+    fish = "fish"
+    powershell = "powershell"
+    pwsh = "pwsh"
+
+
+@app.command("completion")
+def completion(shell: Shell = typer.Argument(help="Shell to generate the script for.")):
+    """Print the completion script for SHELL."""
+    typer.echo(
+        get_completion_script(prog_name="tbctl", complete_var="_TBCTL_COMPLETE", shell=shell.value)
+    )
 
 
 def main() -> None:
