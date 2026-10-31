@@ -1,8 +1,14 @@
+import os
+
 import keyring
 import keyring.backend
 import keyring.backends.fail
 import keyring.errors
 import pytest
+
+# Typer forces styled help output when one of these is set at import time, as on GitHub Actions.
+for var in ("GITHUB_ACTIONS", "FORCE_COLOR", "PY_COLORS"):
+    os.environ.pop(var, None)
 
 
 class MemoryKeyring(keyring.backend.KeyringBackend):
