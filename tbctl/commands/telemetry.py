@@ -2,8 +2,8 @@ import json
 import re
 import time
 from datetime import timezone
+from enum import Enum
 
-import click
 import typer
 
 import tbctl.aliases as aliases
@@ -26,7 +26,20 @@ _REL_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 # the aggregation path stays a single request capped at one page.
 _PAGE_SIZE = 1_000
 _DEFAULT_WINDOW_MS = 24 * 3600 * 1000
-_AGGREGATIONS = ["MIN", "MAX", "AVG", "SUM", "COUNT", "NONE"]
+
+
+class Order(str, Enum):
+    ASC = "ASC"
+    DESC = "DESC"
+
+
+class Aggregation(str, Enum):
+    MIN = "MIN"
+    MAX = "MAX"
+    AVG = "AVG"
+    SUM = "SUM"
+    COUNT = "COUNT"
+    NONE = "NONE"
 
 
 def _now_ms() -> int:
@@ -228,21 +241,15 @@ def history(
     limit: int = typer.Option(
         None, "--limit", help="Max data points per key (default: fetch the full window)."
     ),
-    order: str = typer.Option(
-        "ASC",
-        "--order",
-        help="Sort order.",
-        metavar="[ASC|DESC]",
-        click_type=click.Choice(["ASC", "DESC"], case_sensitive=False),
+    order: Order = typer.Option(
+        Order.ASC, "--order", help="Sort order.", metavar="[ASC|DESC]", case_sensitive=False
     ),
-    agg: str = typer.Option(
+    agg: Aggregation = typer.Option(
         None,
         "--agg",
         help="Aggregation function.",
-        metavar=f"[{'|'.join(_AGGREGATIONS)}]",
-        click_type=click.Choice(
-            ["MIN", "MAX", "AVG", "SUM", "COUNT", "NONE"], case_sensitive=False
-        ),
+        metavar=f"[{'|'.join(Aggregation)}]",
+        case_sensitive=False,
     ),
     interval: str = typer.Option(
         None, "--interval", help="Aggregation interval: milliseconds or a duration like 5m, 1h."
@@ -256,6 +263,8 @@ def history(
     if plot and output_json:
         typer.echo("--plot and --json are mutually exclusive.", err=True)
         raise typer.Exit(1)
+    order = order.value
+    agg = agg.value if agg else None
     interval_ms = _parse_interval(interval) if interval else None
 
     now_ms = _now_ms()
