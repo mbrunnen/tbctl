@@ -7,6 +7,16 @@ from typer.testing import CliRunner
 from tbctl import keycache
 from tbctl.cli import app
 from tbctl.commands import telemetry
+from tests.conftest import current
+
+
+@pytest.fixture(autouse=True)
+def _logged_in(config_dir):
+    """The key cache is kept per login, so give the context a user."""
+    from tbctl import state
+
+    state.save(current().key, {"user": "me@example.com"})
+
 
 runner = CliRunner()
 
@@ -293,7 +303,7 @@ def test_keys_fills_cache():
 
     _invoke(["telemetry", "keys", DEVICE], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["humidity", "temperature"]
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["humidity", "temperature"]
 
 
 def test_keys_cache_is_indexed_by_the_typed_name():
@@ -302,48 +312,48 @@ def test_keys_cache_is_indexed_by_the_typed_name():
 
     _invoke(["telemetry", "keys", "OX1DEV-FOGMAZ"], api)
 
-    assert keycache.lookup("default", "OX1DEV-FOGMAZ", keycache.TIMESERIES) == ["rsrp"]
+    assert keycache.lookup(current(), "OX1DEV-FOGMAZ", keycache.TIMESERIES) == ["rsrp"]
 
 
 def test_history_without_keys_replaces_cache():
-    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
     api = MagicMock()
     api.get_timeseries_keys.return_value = "['rsrp']"
     api.get_timeseries.return_value = "{}"
 
     _invoke(["telemetry", "history", DEVICE], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["rsrp"]
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["rsrp"]
 
 
 def test_history_with_keys_adds_to_cache():
-    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
     api = MagicMock()
     api.get_timeseries.return_value = "{'temperature': [{'ts': 1700000000000, 'value': '21.5'}]}"
 
     _invoke(["telemetry", "history", DEVICE, "--keys", "temperature", "--last", "1h"], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["a", "temperature"]
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["a", "temperature"]
 
 
 def test_latest_without_keys_replaces_cache():
-    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
     api = MagicMock()
     api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
 
     _invoke(["telemetry", "latest", DEVICE], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["soc"]
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["soc"]
 
 
 def test_latest_with_keys_adds_to_cache():
-    keycache.record("default", DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
     api = MagicMock()
     api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
 
     _invoke(["telemetry", "latest", DEVICE, "--keys", "soc"], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == ["a", "soc"]
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["a", "soc"]
 
 
 def test_failed_call_writes_no_cache():
@@ -354,7 +364,7 @@ def test_failed_call_writes_no_cache():
 
     _invoke(["telemetry", "keys", DEVICE], api)
 
-    assert keycache.lookup("default", DEVICE, keycache.TIMESERIES) == []
+    assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == []
 
 
 _TWO_POINTS_DESC = (

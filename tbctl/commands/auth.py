@@ -1,12 +1,13 @@
 import json
 import os
 import sys
+from urllib.parse import urlparse
 
 import typer
 
 import tbctl.config as cfg
 import tbctl.credentials as credentials
-from tbctl import session
+from tbctl import session, state
 from tbctl.commands import _client
 from tbctl.commands._client import _error_detail, build_client, check_connection
 
@@ -22,8 +23,8 @@ def _fail(message: str) -> None:
     raise typer.Exit(1)
 
 
-def _not_logged_in(profile: str) -> None:
-    _fail(f"Not logged in for profile '{profile}'. Run `tbctl auth login`.")
+def _not_logged_in(context: cfg.Context) -> None:
+    _fail(f"Not logged in for context '{context.name}'. Run `tbctl auth login`.")
 
 
 def _api_error(e: Exception, url: str) -> None:
@@ -52,40 +53,82 @@ def _customer_id(user: dict) -> str | None:
     return None
 
 
+def _login_context(ctx) -> tuple[cfg.Context, bool]:
+    """Return the context to log in to, and whether it is new.
+
+    A context missing from the file, or the first one of an empty file, is
+    asked for and written only after the login succeeds.
+    """
+    config_flag, context_flag = cfg.choice(ctx)
+    try:
+        path, file_source = cfg.config_file(config_flag)
+        found = cfg.contexts(cfg.read(path))
+    except cfg.ConfigError as e:
+        _fail(f"Error: {e}")
+    name = context_flag or os.environ.get(cfg.CONTEXT_ENV)
+    if (name and name in found) or (not name and found):
+        return cfg.active(ctx), False
+    url = cfg.normalise_url(typer.prompt("ThingsBoard URL"))
+    name = name or urlparse(url).hostname
+    if not name:
+        _fail(f"Cannot name a context after '{url}'; give the URL with https://.")
+    return cfg.Context(path, file_source, name, "new", url), True
+
+
+def _add_user(context: cfg.Context, username: str) -> None:
+    """Record the user a context logs in as; the config file stays its only source."""
+    doc = cfg.read(context.file)
+    doc["contexts"][context.name]["user"] = username
+    cfg.write(context.file, doc)
+    typer.echo(f"Added user = \"{username}\" to context '{context.name}' in {context.file}.")
+
+
 def _store(
-    profile: str, url: str, kind: str, secret: str, expires, insecure: bool, user: dict
+    context: cfg.Context, kind: str, secret: str, expires, insecure: bool, user: dict
 ) -> None:
-    """Replace the profile's login, so an old secret is never paired with a new URL."""
-    credentials.clear(profile)
-    data = cfg.load(profile)
-    data["url"] = url
+    """Replace the context's login, so no state of an old login survives."""
+    credentials.clear(context)
     customer_id = _customer_id(user)
     if customer_id:
-        data["customer_id"] = customer_id
-    cfg.save(data, profile)
-    credentials.save(profile, kind, secret, expires, insecure=insecure)
+        state.save(context.key, {"customer_id": customer_id})
+    credentials.save(context, kind, secret, expires, insecure=insecure)
+
+
+def _renewed(context: cfg.Context) -> bool:
+    """Renew a stored session, so a valid one needs no password."""
+    cred = credentials.load(context)
+    if cred is None or cred.kind != credentials.JWT:
+        return False
+    try:
+        pair = session.renew(context, force=True)
+    except session.SessionExpired:
+        return False
+    except Exception as e:
+        _api_error(e, context.url)
+    expires = session.date(session.exp_ms(pair["refreshToken"]))
+    typer.echo(f"Already logged in to {context.url}; session renewed, valid until {expires}.")
+    return True
 
 
 @app.command("login")
 def login(
     ctx: typer.Context,
-    url: str = typer.Option(None, "--url", help="ThingsBoard base URL."),
-    username: str = typer.Option(None, "--username", "-u", help="User email."),
     api_key: bool = typer.Option(
         False, "--api-key", help="Store an API key (prompted, or read from stdin) instead."
     ),
     insecure_storage: bool = typer.Option(
-        False, "--insecure-storage", help="Store the credential in the profile file."
+        False, "--insecure-storage", help="Store the credential in the state file."
     ),
 ):
-    """Log in with username and password, or store an API key."""
-    profile = ctx.obj["profile"]
+    """Log in as the context's user with a password, or store an API key.
+
+    A stored session that can still be renewed is renewed instead.
+    """
     if os.environ.get(credentials.ENV):
         _fail(f"{credentials.ENV} is set; unset it to log in.")
-    if api_key and username:
-        _fail("--api-key and --username exclude each other.")
-    if not url:
-        url = typer.prompt("ThingsBoard URL", default=cfg.load(profile).get("url"))
+    context, new_context = _login_context(ctx)
+    url = context.url
+    username = None if new_context else cfg.table(context).get("user")
 
     if api_key:
         if _stdin_is_tty():
@@ -93,11 +136,16 @@ def login(
         else:
             key = sys.stdin.read().strip()
         user = _whoami(url, key, "ApiKey", "API key")
-        _store(profile, url, credentials.API_KEY, key, None, insecure_storage, user)
+        if new_context:
+            cfg.add_context(context.file, context.name, url)
+        _store(context, credentials.API_KEY, key, None, insecure_storage, user)
         typer.echo(f"Logged in to {url} as {user.get('email')} with an API key.")
         return
 
-    if not username:
+    if not new_context and _renewed(context):
+        return
+    new_user = not username
+    if new_user:
         username = typer.prompt("Username")
     password = typer.prompt("Password", hide_input=True)
     try:
@@ -110,25 +158,30 @@ def login(
         _api_error(e, url)
     user = _whoami(url, pair["token"], "Bearer", "session")
     expires = session.exp_ms(pair["refreshToken"])
-    _store(profile, url, credentials.JWT, json.dumps(pair), expires, insecure_storage, user)
+    _store(context, credentials.JWT, json.dumps(pair), expires, insecure_storage, user)
+    if new_context:
+        cfg.add_context(context.file, context.name, url, username)
+        typer.echo(f"Added context '{context.name}' to {context.file}.")
+    elif new_user:
+        _add_user(context, username)
     typer.echo(f"Logged in to {url} as {username}; session valid until {session.date(expires)}.")
 
 
 @app.command("refresh")
 def refresh(ctx: typer.Context):
     """Renew the session now."""
-    profile = ctx.obj["profile"]
-    cred = credentials.load(profile)
+    context = cfg.active(ctx)
+    cred = credentials.load(context)
     if cred is None:
-        _not_logged_in(profile)
+        _not_logged_in(context)
     if cred.kind != credentials.JWT:
         _fail("API keys are not refreshed.")
     try:
-        pair = session.renew(profile, force=True)
+        pair = session.renew(context, force=True)
     except session.SessionExpired as e:
-        _fail(f"Session for profile '{profile}' {e}. Run `tbctl auth login`.")
+        _fail(f"Session for context '{context.name}' {e}. Run `tbctl auth login`.")
     except Exception as e:
-        _api_error(e, cfg.load(profile).get("url") or "the server")
+        _api_error(e, context.url)
     typer.echo(
         f"Session renewed; valid until {session.date(session.exp_ms(pair['refreshToken']))}."
     )
@@ -140,16 +193,15 @@ def status(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     """Show who is logged in, how, and until when."""
-    profile = ctx.obj["profile"]
-    url = cfg.load(profile).get("url")
-    if not url or not credentials.load(profile):
-        _not_logged_in(profile)
-    cred = credentials.load(profile)
-    token, prefix = session.ensure_fresh(profile)
-    ok, user = check_connection(url, token, prefix)
-    data = {"url": url, "user": user, "auth": cred.kind, "source": cred.source}
+    context = cfg.active(ctx)
+    cred = credentials.load(context)
+    if not cred:
+        _not_logged_in(context)
+    token, prefix = session.ensure_fresh(context)
+    ok, user = check_connection(context.url, token, prefix)
+    data = {"user": user, "auth": cred.kind, "source": cred.source}
     if cred.kind == credentials.JWT:
-        expires = cfg.load(profile).get("refresh_expires")
+        expires = state.load(context.key).get("refresh_expires")
         data["expires"] = session.date(expires) if expires else "unknown"
     if output_json:
         typer.echo(json.dumps(data, indent=2))
@@ -163,22 +215,21 @@ def status(
 @app.command("logout")
 def logout(ctx: typer.Context):
     """End the session on the server and forget the credential locally."""
-    profile = ctx.obj["profile"]
-    data = cfg.load(profile)
-    if "auth" not in data:
-        if credentials.clear(profile):
-            typer.echo(f"Removed a credential without 'auth' from profile '{profile}'.")
+    context = cfg.active(ctx)
+    if "auth" not in state.load(context.key):
+        if credentials.clear(context):
+            typer.echo(f"Removed a credential without a login from context '{context.name}'.")
             return
-        _not_logged_in(profile)
-    cred = credentials.load(profile)
+        _not_logged_in(context)
+    cred = credentials.load(context)
     if cred is None:
         print("Warning: the stored credential cannot be read; nothing sent.", file=sys.stderr)
     elif cred.source == credentials.ENV:
         print(f"Warning: {credentials.ENV} is set; nothing sent to the server.", file=sys.stderr)
     elif cred.kind == credentials.JWT:
         try:
-            session.logout(data["url"], json.loads(cred.secret))
+            session.logout(context.url, json.loads(cred.secret))
         except Exception as e:
             print(f"Warning: could not end the session on the server ({e})", file=sys.stderr)
-    credentials.clear(profile)
-    typer.echo(f"Logged out of profile '{profile}'.")
+    credentials.clear(context)
+    typer.echo(f"Logged out of context '{context.name}'.")

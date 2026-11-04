@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 import keyring
 import keyring.backend
@@ -34,9 +35,55 @@ def config_dir(tmp_path, monkeypatch):
     """Redirect the config directory so no test reads the real user config."""
     monkeypatch.setattr("tbctl.config.CONFIG_DIR", tmp_path)
     monkeypatch.setattr("tbctl.keycache.CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr("tbctl.state.STATE_DIR", tmp_path / "state")
     monkeypatch.setattr("tbctl.config._warned", set(), raising=False)
     monkeypatch.setattr("tbctl.credentials._warned", set(), raising=False)
+    path = tmp_path / "config.toml"
+    path.write_text(f'[contexts.default]\nurl = "{URL}"\nuser = "{USER}"\ndefault = true\n')
+    path.chmod(0o600)
     return tmp_path
+
+
+URL = "https://tb.example.com"
+USER = "me@example.com"
+
+
+@pytest.fixture
+def context(config_dir):
+    """The context every test gets unless it writes its own config file."""
+    import tbctl.config as cfg
+
+    return cfg.resolve()
+
+
+def current():
+    """The context a command in a test resolves to."""
+    import tbctl.config as cfg
+
+    return cfg.resolve()
+
+
+def context_for(path, name, url):
+    """Write a one-context config file at PATH and resolve it."""
+    import tbctl.config as cfg
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'[contexts."{name}"]\nurl = "{url}"\n')
+    return cfg.resolve(config_flag=str(path))
+
+
+def second_context(config_dir, name="prod", url="https://prod"):
+    """Add another context to the default config file and resolve it."""
+    import tbctl.config as cfg
+
+    path = config_dir / "config.toml"
+    path.write_text(path.read_text() + f'[contexts.{name}]\nurl = "{url}"\n')
+    return cfg.resolve(context_flag=name)
+
+
+def fake_click_ctx(params):
+    """Stand in for the Click context shell completion hands to a callback."""
+    return SimpleNamespace(params=params, parent=None, obj=None)
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +91,8 @@ def memory_keyring(monkeypatch):
     """Keep every test away from the real Secret Service and the caller's environment."""
     monkeypatch.delenv("TBCTL_TOKEN", raising=False)
     monkeypatch.delenv("_TBCTL_COMPLETE", raising=False)
+    monkeypatch.delenv("TBCTL_CONFIG", raising=False)
+    monkeypatch.delenv("TBCTL_CONTEXT", raising=False)
     backend = MemoryKeyring()
     keyring.set_keyring(backend)
     return backend

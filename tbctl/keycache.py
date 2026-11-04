@@ -1,5 +1,9 @@
 """Keys tbctl has seen per device, kept locally so shell completion needs no network.
 
+The cache is kept per login, as ``<user>@<host>`` with the context's ``user``
+from the config file: what a user may read decides the keys, so two contexts
+with the same login share it. A context without ``user`` caches nothing.
+
 The file maps each device UUID to its time-series keys and its attribute keys per
 scope, and each name or alias the user typed to the UUID it resolved to.
 """
@@ -9,20 +13,32 @@ import json
 import os
 from collections.abc import Iterable
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
 import tbctl.aliases as aliases
+import tbctl.config as cfg
+from tbctl.config import Context
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "tbctl"
 TIMESERIES = "timeseries"
 
 
-def _path(profile: str) -> Path:
-    return CACHE_DIR / profile / "keys.json"
-
-
-def _load(profile: str) -> dict:
+def _path(context: Context) -> Path | None:
     try:
-        data = json.loads(_path(profile).read_text())
+        user = cfg.table(context).get("user")
+    except Exception:
+        return None
+    if not user:
+        return None
+    return CACHE_DIR / quote(f"{user}@{urlparse(context.url).netloc}", safe="") / "keys.json"
+
+
+def _load(context: Context) -> dict:
+    path = _path(context)
+    if path is None:
+        return {}
+    try:
+        data = json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
     if not isinstance(data, dict):
@@ -36,10 +52,13 @@ def _load(profile: str) -> dict:
 
 
 def record(
-    profile: str, device: str, device_id: str, kind: str, keys: Iterable[str], full: bool
+    context: Context, device: str, device_id: str, kind: str, keys: Iterable[str], full: bool
 ) -> None:
     """Store the keys of one kind for a device; a full listing replaces, a partial one adds."""
-    data = _load(profile)
+    path = _path(context)
+    if path is None:
+        return
+    data = _load(context)
     names = data.setdefault("names", {})
     if device != device_id:
         names[device] = device_id
@@ -47,7 +66,6 @@ def record(
     known = set() if full else set(entry.get(kind, []))
     entry[kind] = sorted(known | set(keys))
 
-    path = _path(profile)
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
     with contextlib.suppress(OSError):
         try:
@@ -60,11 +78,11 @@ def record(
             tmp.unlink(missing_ok=True)
 
 
-def lookup(profile: str, device: str, kind: str) -> list[str]:
+def lookup(context: Context, device: str, kind: str) -> list[str]:
     """Return the cached keys; a local alias resolves to its UUID or device name first."""
-    data = _load(profile)
+    data = _load(context)
     names = data.get("names", {})
-    alias = aliases.resolve(profile, device)
+    alias = aliases.resolve(context, device)
     if alias:
         device = alias.id or alias.name
     device_id = names.get(device, device)
@@ -78,7 +96,10 @@ def _complete(ctx, incomplete: str, kind: str) -> list[str]:
     head, _, last = incomplete.rpartition(",")
     prefix = f"{head}," if head else ""
     taken = set(head.split(",")) if head else set()
-    keys = lookup(aliases.active_profile(ctx), device, kind)
+    context = cfg.try_active(ctx)
+    if context is None:
+        return []
+    keys = lookup(context, device, kind)
     return [prefix + k for k in keys if k.startswith(last) and k not in taken]
 
 
@@ -101,11 +122,13 @@ def _writable(ctx, incomplete: str, given: set[str]) -> list[str]:
     scope = normalise_scope(params.get("scope") or "shared")
     if not device or scope in (None, "CLIENT_SCOPE"):
         return []
-    profile = aliases.active_profile(ctx)
-    protected = protected_keys(profile)
+    context = cfg.try_active(ctx)
+    if context is None:
+        return []
+    protected = protected_keys(context)
     return [
         k
-        for k in lookup(profile, device, scope)
+        for k in lookup(context, device, scope)
         if k.startswith(incomplete) and k not in protected and k not in given
     ]
 

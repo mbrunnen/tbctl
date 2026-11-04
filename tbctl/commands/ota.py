@@ -6,6 +6,7 @@ import typer
 
 import tbctl.aliases as aliases
 import tbctl.config as cfg
+from tbctl import state
 from tbctl.commands._client import (
     _UUID_RE,
     _configuration,
@@ -33,14 +34,14 @@ def _format_size(size_bytes) -> str:
     return f"{size_bytes / 1024**2:.1f} MB"
 
 
-def _get_api(profile: str):
+def _get_api(context: cfg.Context):
     try:
         from tb_client.api.ota_package_controller_api import OtaPackageControllerApi
     except ImportError:
         typer.echo("tb_client not found. Run ./generate.sh to generate the client.", err=True)
         raise typer.Exit(1)
 
-    return OtaPackageControllerApi(_configuration(profile))
+    return OtaPackageControllerApi(_configuration(context))
 
 
 _PAGE_SIZE = 100
@@ -71,12 +72,12 @@ def list_packages(
         typer.echo("--type requires --device-profile.", err=True)
         raise typer.Exit(1)
 
-    cfg_profile = ctx.obj["profile"]
-    api = _get_api(cfg_profile)
+    context = cfg.active(ctx)
+    api = _get_api(context)
 
     device_profile_id = None
     if device_profile:
-        device_profile_id = resolve_profile_id(cfg_profile, device_profile)
+        device_profile_id = resolve_profile_id(context, device_profile)
 
     types = ([type] if type else ["FIRMWARE", "SOFTWARE"]) if device_profile_id else None
 
@@ -224,12 +225,12 @@ def upload_package(
         typer.echo("Provide exactly one source: a FILE argument or --external-url.", err=True)
         raise typer.Exit(1)
 
-    cfg_profile = ctx.obj["profile"]
-    api = _get_api(cfg_profile)
+    context = cfg.active(ctx)
+    api = _get_api(context)
 
     profile_id = None
     if device_profile:
-        profile_id = resolve_profile_id(cfg_profile, device_profile)
+        profile_id = resolve_profile_id(context, device_profile)
 
     algorithm = checksum_algorithm.upper()
     data = None
@@ -293,9 +294,9 @@ def get_package(
     latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    cfg_profile = ctx.obj["profile"]
-    id = _resolve_package(cfg_profile, package, version, latest, None)
-    api = _get_api(cfg_profile)
+    context = cfg.active(ctx)
+    id = _resolve_package(context, package, version, latest, None)
+    api = _get_api(context)
     try:
         pkg = api.get_ota_package_info_by_id(ota_package_id=id)
     except Exception as e:
@@ -374,12 +375,12 @@ def _choose(candidates, package, version, pkg_type):
     return max(matches, key=lambda c: c["createdTime"] or 0)["id"]
 
 
-def _resolve_package(cfg_profile, package, version, latest, pkg_type):
+def _resolve_package(context, package, version, latest, pkg_type):
     """Return the UUID of the package named by UUID, or by title with -v or --latest."""
     _check_package_args(package, version, latest)
     if _UUID_RE.match(package):
         return package
-    api = _get_api(cfg_profile)
+    api = _get_api(context)
     candidates = []
     number = 0
     while True:
@@ -433,16 +434,16 @@ def _packages_for_profile(api, profile_id, pkg_type):
     return list(page.data)
 
 
-def _resolve_package_info(cfg_profile, *, device_profile, device, version, pkg_type):
+def _resolve_package_info(context, *, device_profile, device, version, pkg_type):
     """Find the package assigned to a device profile or device, or one of its versions."""
-    api = _get_api(cfg_profile)
+    api = _get_api(context)
     if device_profile:
-        profile_id = resolve_profile_id(cfg_profile, device_profile)
+        profile_id = resolve_profile_id(context, device_profile)
         if version:
             candidates = _packages_for_profile(api, profile_id, pkg_type)
             return api, _select_from_candidates(candidates, version, f"profile '{device_profile}'")
         try:
-            profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
+            profile = raw_get(device_api(context), f"/api/deviceProfile/{profile_id}")
         except Exception as e:
             handle_api_error(e)
         ota_id = _assigned_ota_id(profile, pkg_type, f"Profile '{device_profile}'")
@@ -451,9 +452,9 @@ def _resolve_package_info(cfg_profile, *, device_profile, device, version, pkg_t
         except Exception as e:
             handle_api_error(e)
     if device:
-        device_id = resolve_device_id(cfg_profile, device)
+        device_id = resolve_device_id(context, device)
         try:
-            dev = raw_get(device_api(cfg_profile), f"/api/device/{device_id}")
+            dev = raw_get(device_api(context), f"/api/device/{device_id}")
         except Exception as e:
             handle_api_error(e)
         profile_id = dev["deviceProfileId"]["id"]
@@ -463,7 +464,7 @@ def _resolve_package_info(cfg_profile, *, device_profile, device, version, pkg_t
         ref = dev.get("firmwareId" if pkg_type == "FIRMWARE" else "softwareId")
         if not ref:
             try:
-                profile = raw_get(device_api(cfg_profile), f"/api/deviceProfile/{profile_id}")
+                profile = raw_get(device_api(context), f"/api/deviceProfile/{profile_id}")
             except Exception as e:
                 handle_api_error(e)
             ota_id = _assigned_ota_id(profile, pkg_type, f"Device '{device}' and its profile")
@@ -514,17 +515,17 @@ def download_package(
         raise typer.Exit(1)
     _validate_selectors(package, device_profile, device, version, latest)
 
-    cfg_profile = ctx.obj["profile"]
+    context = cfg.active(ctx)
     if package:
-        package_id = _resolve_package(cfg_profile, package, version, latest, pkg_type)
-        api = _get_api(cfg_profile)
+        package_id = _resolve_package(context, package, version, latest, pkg_type)
+        api = _get_api(context)
         try:
             info = api.get_ota_package_info_by_id(ota_package_id=package_id)
         except Exception as e:
             handle_api_error(e)
     else:
         api, info = _resolve_package_info(
-            cfg_profile,
+            context,
             device_profile=device_profile,
             device=device,
             version=version,
@@ -545,11 +546,11 @@ def delete_package(
     latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):
-    cfg_profile = ctx.obj["profile"]
-    id = _resolve_package(cfg_profile, package, version, latest, None)
+    context = cfg.active(ctx)
+    id = _resolve_package(context, package, version, latest, None)
     if not yes:
         typer.confirm(f"Delete OTA package {id}?", abort=True)
-    api = _get_api(cfg_profile)
+    api = _get_api(context)
     try:
         api.delete_ota_package(ota_package_id=id)
     except Exception as e:
@@ -573,9 +574,9 @@ def assign_package(
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
 
-    cfg_profile = ctx.obj["profile"]
-    package_id = _resolve_package(cfg_profile, package, version, latest, pkg_type)
-    api = _get_api(cfg_profile)
+    context = cfg.active(ctx)
+    package_id = _resolve_package(context, package, version, latest, pkg_type)
+    api = _get_api(context)
     try:
         info = api.get_ota_package_info_by_id(ota_package_id=package_id)
     except Exception as e:
@@ -584,8 +585,8 @@ def assign_package(
         typer.echo(f"Package '{info.title}' is {info.type}, not {pkg_type}.", err=True)
         raise typer.Exit(1)
 
-    dev_api = device_api(cfg_profile)
-    device_id = resolve_device_id(cfg_profile, device)
+    dev_api = device_api(context)
+    device_id = resolve_device_id(context, device)
     try:
         dev = raw_get(dev_api, f"/api/device/{device_id}")
     except Exception as e:
@@ -612,9 +613,9 @@ def unassign_package(
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
 
-    cfg_profile = ctx.obj["profile"]
-    dev_api = device_api(cfg_profile)
-    device_id = resolve_device_id(cfg_profile, device)
+    context = cfg.active(ctx)
+    dev_api = device_api(context)
+    device_id = resolve_device_id(context, device)
     try:
         dev = raw_get(dev_api, f"/api/device/{device_id}")
     except Exception as e:
@@ -661,10 +662,10 @@ def list_devices(
         raise typer.Exit(1)
     _check_package_args(package, version, latest)
 
-    cfg_profile = ctx.obj["profile"]
-    profile_id = resolve_profile_id(cfg_profile, device_profile) if device_profile else None
-    customer = cfg.load(cfg_profile).get("customer_id")
-    api = device_api(cfg_profile)
+    context = cfg.active(ctx)
+    profile_id = resolve_profile_id(context, device_profile) if device_profile else None
+    customer = state.load(context.key).get("customer_id")
+    api = device_api(context)
     try:
         every = _all_pages(api, "/api/otaPackages")
         if _UUID_RE.match(package):

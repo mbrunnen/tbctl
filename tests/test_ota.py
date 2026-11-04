@@ -5,7 +5,9 @@ from unittest.mock import ANY, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from tbctl import state
 from tbctl.cli import app
+from tests.conftest import current
 
 runner = CliRunner()
 
@@ -317,7 +319,7 @@ def test_list_device_profile_by_name_resolves():
         )
 
     assert result.exit_code == 0
-    resolve.assert_called_once_with("default", "Sensor-V1")
+    resolve.assert_called_once_with(current(), "Sensor-V1")
     assert mock_api.get_ota_packages1.call_args.kwargs["device_profile_id"] == _LIST_PROFILE_UUID
 
 
@@ -380,9 +382,10 @@ def test_list_search_filter():
 
 
 def test_list_no_config(config_dir):
+    (config_dir / "config.toml").unlink()
     result = runner.invoke(app, ["ota", "list"])
     assert result.exit_code != 0
-    assert "not configured" in result.stderr
+    assert "run `tbctl auth login`" in result.stderr
 
 
 # --- download command ---
@@ -1046,7 +1049,7 @@ def test_assign_resolves_device_name():
         result = runner.invoke(app, ["ota", "assign", PKG_UUID, "sensor-1"])
 
     assert result.exit_code == 0, result.output
-    resolve.assert_called_once_with("default", "sensor-1")
+    resolve.assert_called_once_with(current(), "sensor-1")
 
 
 # --- unassign command ---
@@ -1618,10 +1621,8 @@ def test_devices_unknown_package():
 
 
 def test_devices_uses_stored_customer(config_dir):
-    import tbctl.config as cfg
-
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
-    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+    state.save(current().key, {"customer_id": customer})
 
     result = _ota_devices(
         ["ox1-app", "-v", "1.0", "-t", "firmware", "--json"],

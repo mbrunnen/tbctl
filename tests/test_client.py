@@ -3,6 +3,7 @@ import json
 import pytest
 
 import tbctl.config as cfg
+from tbctl import state
 from tbctl.commands._client import (
     check_connection,
     handle_api_error,
@@ -11,6 +12,13 @@ from tbctl.commands._client import (
     resolve_device_id,
     resolve_profile_id,
 )
+from tests.conftest import second_context
+
+
+@pytest.fixture(autouse=True)
+def _context(config_dir):
+    global C
+    C = cfg.resolve()
 
 
 def _device_response(payload, status=200):
@@ -63,7 +71,7 @@ def test_parse_response_already_parsed():
 
 def test_resolve_device_id_uuid_passthrough():
     uuid = "11111111-2222-3333-4444-555555555555"
-    assert resolve_device_id("default", uuid) == uuid
+    assert resolve_device_id(C, uuid) == uuid
 
 
 def test_resolve_device_id_name_lookup(monkeypatch):
@@ -73,9 +81,9 @@ def test_resolve_device_id_name_lookup(monkeypatch):
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
+    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-UQEUBW")
 
 
@@ -89,9 +97,9 @@ def test_resolve_device_id_name_lookup_tolerates_default_transport(monkeypatch):
             "deviceData": {"transportConfiguration": {"type": "DEFAULT"}},
         }
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
+    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
 
 
 def test_resolve_device_id_not_found(monkeypatch):
@@ -101,10 +109,10 @@ def test_resolve_device_id_not_found(monkeypatch):
 
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(None)
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     with pytest.raises(typer.Exit):
-        resolve_device_id("default", "missing")
+        resolve_device_id(C, "missing")
 
 
 def test_check_connection_success(monkeypatch):
@@ -166,10 +174,10 @@ def test_resolve_device_id_403_hint(monkeypatch, capsys):
     api.get_tenant_device_without_preload_content.side_effect = ApiException(
         status=403, reason="Forbidden"
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     with pytest.raises(typer.Exit):
-        resolve_device_id("default", "OX1-UQEUBW")
+        resolve_device_id(C, "OX1-UQEUBW")
     assert "pass the device UUID instead" in capsys.readouterr().err
 
 
@@ -178,14 +186,14 @@ def test_resolve_device_id_maps_an_alias_to_the_device_name(monkeypatch, config_
 
     import tbctl.aliases as aliases
 
-    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    aliases.add(C, "ruedi", "OX1-Y2HUZR")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "ruedi") == "resolved-uuid"
+    assert resolve_device_id(C, "ruedi") == "resolved-uuid"
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-Y2HUZR")
 
 
@@ -195,11 +203,11 @@ def test_resolve_device_id_uses_the_uuid_stored_with_an_alias(monkeypatch, confi
     import tbctl.aliases as aliases
 
     uuid = "11111111-2222-3333-4444-555555555555"
-    aliases.add("default", "ruedi", "OX1-Y2HUZR", uuid)
+    aliases.add(C, "ruedi", "OX1-Y2HUZR", uuid)
     api = MagicMock()
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "ruedi") == uuid
+    assert resolve_device_id(C, "ruedi") == uuid
     api.get_tenant_device_without_preload_content.assert_not_called()
 
 
@@ -208,14 +216,14 @@ def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monke
 
     import tbctl.aliases as aliases
 
-    aliases.add("default", "horst", "OX1-1T6570")
+    aliases.add(C, "horst", "OX1-1T6570")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    resolve_device_id("default", "horst")
+    resolve_device_id(C, "horst")
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-1T6570")
 
 
@@ -225,27 +233,27 @@ def test_resolve_device_id_takes_an_alias_pointing_at_a_uuid(monkeypatch, config
     import tbctl.aliases as aliases
 
     uuid = "11111111-2222-3333-4444-555555555555"
-    aliases.add("default", "jacky", uuid)
+    aliases.add(C, "jacky", uuid)
     api = MagicMock()
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "jacky") == uuid
+    assert resolve_device_id(C, "jacky") == uuid
     api.get_tenant_device_without_preload_content.assert_not_called()
 
 
-def test_resolve_device_id_uses_the_alias_table_of_the_active_profile(monkeypatch, config_dir):
+def test_resolve_device_id_uses_the_alias_table_of_the_active_context(monkeypatch, config_dir):
     from unittest.mock import MagicMock
 
     import tbctl.aliases as aliases
 
-    aliases.add("prod", "ruedi", "OX1-Y2HUZR")
+    aliases.add(second_context(config_dir), "ruedi", "OX1-Y2HUZR")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    resolve_device_id("test", "ruedi")
+    resolve_device_id(C, "ruedi")
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="ruedi")
 
 
@@ -254,7 +262,7 @@ def test_resolve_profile_id_uuid_passthrough():
 
     uuid = "22222222-3333-4444-5555-666666666666"
     with patch("tbctl.commands._client.device_api") as device_api:
-        assert resolve_profile_id("default", uuid) == uuid
+        assert resolve_profile_id(C, uuid) == uuid
     device_api.assert_not_called()
 
 
@@ -267,21 +275,13 @@ def _ota_list():
 
 
 def test_missing_token_names_login_and_env(config_dir):
-    cfg.save({"url": "https://tb.example"}, "default")
     result = _ota_list()
     assert result.exit_code != 0
     assert "tbctl auth login" in result.stderr
     assert "TBCTL_TOKEN" in result.stderr
 
 
-def test_missing_url_names_login(config_dir):
-    result = _ota_list()
-    assert result.exit_code != 0
-    assert "tbctl auth login" in result.stderr
-
-
 def test_missing_token_without_backend_is_clean(config_dir, no_keyring):
-    cfg.save({"url": "https://tb.example"}, "default")
     result = _ota_list()
     assert result.exit_code != 0
     assert "TBCTL_TOKEN" in result.stderr
@@ -289,7 +289,6 @@ def test_missing_token_without_backend_is_clean(config_dir, no_keyring):
 
 
 def test_token_from_env_builds_client(config_dir, monkeypatch):
-    cfg.save({"url": "https://tb.example"}, "default")
     monkeypatch.setenv("TBCTL_TOKEN", "env-tok")
     calls = []
 
@@ -299,19 +298,19 @@ def test_token_from_env_builds_client(config_dir, monkeypatch):
 
     monkeypatch.setattr("tbctl.commands._client.build_client", fake_build)
     _ota_list()
-    assert calls == [("https://tb.example", "env-tok", "ApiKey")]
+    assert calls == [("https://tb.example.com", "env-tok", "ApiKey")]
 
 
 def test_plaintext_token_in_toml_is_not_used(config_dir):
-    cfg.save({"url": "https://tb.example", "token": "old"}, "default")
+    with open(C.file, "a") as f:
+        f.write('token = "old"\n')
     result = _ota_list()
     assert result.exit_code != 0
-    assert "Not logged in for profile 'default'" in result.stderr
+    assert "Not logged in for context 'default'" in result.stderr
 
 
 def test_configuration_refreshes_before_build(config_dir, monkeypatch):
-    cfg.save({"url": "https://tb.example"}, "default")
-    monkeypatch.setattr("tbctl.session.ensure_fresh", lambda profile: ("new", "Bearer"))
+    monkeypatch.setattr("tbctl.session.ensure_fresh", lambda context: ("new", "Bearer"))
     calls = []
 
     def fake_build(url, token, prefix):
@@ -345,7 +344,7 @@ def test_resolve_device_id_by_name_as_customer(monkeypatch, config_dir):
     from unittest.mock import MagicMock
 
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
-    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+    state.save(C.key, {"customer_id": customer})
     api = MagicMock()
     api.get_customer_devices_without_preload_content.return_value = _device_response(
         {
@@ -355,9 +354,9 @@ def test_resolve_device_id_by_name_as_customer(monkeypatch, config_dir):
             ]
         }
     )
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id("default", "OX1-UQEUBW") == "resolved-uuid"
+    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
     api.get_tenant_device_without_preload_content.assert_not_called()
     api.get_customer_devices_without_preload_content.assert_called_once_with(
         customer_id=customer, page_size=100, page=0, text_search="OX1-UQEUBW"
@@ -369,10 +368,10 @@ def test_resolve_device_id_by_name_as_customer_not_found(monkeypatch, config_dir
 
     import typer
 
-    cfg.save({"url": "https://tb", "customer_id": "c1"}, "default")
+    state.save(C.key, {"customer_id": "c1"})
     api = MagicMock()
     api.get_customer_devices_without_preload_content.return_value = _device_response({"data": []})
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda profile: api)
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     with pytest.raises(typer.Exit):
-        resolve_device_id("default", "missing")
+        resolve_device_id(C, "missing")

@@ -5,8 +5,9 @@ import re
 import typer
 
 import tbctl.aliases as aliases
-import tbctl.config as cfg
 import tbctl.credentials as credentials
+from tbctl import state
+from tbctl.config import Context
 
 _UUID_RE = aliases.UUID_RE
 
@@ -48,31 +49,26 @@ def build_client(url: str, token: str | None = None, prefix: str = "ApiKey"):
     return make_api_client(configuration)
 
 
-def _configuration(profile: str):
+def _configuration(context: Context):
     try:
         from tb_client.configuration import Configuration  # noqa: F401
     except ImportError:
         typer.echo("tb_client not found. Run ./generate.sh to generate the client.", err=True)
         raise typer.Exit(1)
 
-    conf = cfg.load(profile)
-    if not conf.get("url"):
-        typer.echo(f"Profile '{profile}' not configured. Run `tbctl auth login`.", err=True)
-        raise typer.Exit(1)
-
     from tbctl import session
 
-    fresh = session.ensure_fresh(profile)
+    fresh = session.ensure_fresh(context)
     if not fresh:
         typer.echo(
-            f"Not logged in for profile '{profile}'. Run `tbctl auth login`, "
+            f"Not logged in for context '{context.name}'. Run `tbctl auth login`, "
             f"or set {credentials.ENV}.",
             err=True,
         )
         raise typer.Exit(1)
 
     token, prefix = fresh
-    return build_client(conf["url"], token, prefix)
+    return build_client(context.url, token, prefix)
 
 
 def check_connection(url: str, token: str, prefix: str = "ApiKey") -> tuple[bool, str]:
@@ -91,22 +87,22 @@ def check_connection(url: str, token: str, prefix: str = "ApiKey") -> tuple[bool
     return True, user.get("email", "")
 
 
-def telemetry_api(profile: str):
+def telemetry_api(context: Context):
     from tb_client.api.telemetry_controller_api import TelemetryControllerApi
 
-    return TelemetryControllerApi(_configuration(profile))
+    return TelemetryControllerApi(_configuration(context))
 
 
-def device_api(profile: str):
+def device_api(context: Context):
     from tb_client.api.device_controller_api import DeviceControllerApi
 
-    return DeviceControllerApi(_configuration(profile))
+    return DeviceControllerApi(_configuration(context))
 
 
-def owner_api(profile: str):
+def owner_api(context: Context):
     from tb_client.api.owner_controller_api import OwnerControllerApi
 
-    return OwnerControllerApi(_configuration(profile))
+    return OwnerControllerApi(_configuration(context))
 
 
 def parse_response(value):
@@ -145,7 +141,7 @@ def handle_api_error(e):
     raise e
 
 
-def resolve_device_id(profile: str, device: str) -> str:
+def resolve_device_id(context: Context, device: str) -> str:
     """Return a device UUID, resolving a local alias or a device name.
 
     A local alias takes precedence over a device of the same name, so the
@@ -153,7 +149,7 @@ def resolve_device_id(profile: str, device: str) -> str:
     UUID skips the name lookup, which needs tenant device-read permission, or for
     a customer user searches that customer's devices.
     """
-    alias = aliases.resolve(profile, device)
+    alias = aliases.resolve(context, device)
     if alias:
         if alias.id:
             return alias.id
@@ -162,16 +158,16 @@ def resolve_device_id(profile: str, device: str) -> str:
         return device
     from tb_client.exceptions import ApiException
 
-    customer_id = cfg.load(profile).get("customer_id")
+    customer_id = state.load(context.key).get("customer_id")
     try:
         if customer_id:
-            response = device_api(profile).get_customer_devices_without_preload_content(
+            response = device_api(context).get_customer_devices_without_preload_content(
                 customer_id=customer_id, page_size=100, page=0, text_search=device
             )
             matches = [d for d in raw_json(response).get("data", []) if d.get("name") == device]
             found = matches[0] if matches else None
         else:
-            response = device_api(profile).get_tenant_device_without_preload_content(
+            response = device_api(context).get_tenant_device_without_preload_content(
                 device_name=device
             )
             found = raw_json(response)
@@ -249,11 +245,11 @@ def raw_post(api, resource_path, body):
     return raw_json(response)
 
 
-def resolve_profile_id(profile: str, name: str) -> str:
+def resolve_profile_id(context: Context, name: str) -> str:
     """Return the device-profile UUID for a UUID, a name, or ``default``."""
     if _UUID_RE.match(name):
         return name
-    api = device_api(profile)
+    api = device_api(context)
     try:
         if name == "default":
             return raw_get(api, "/api/deviceProfileInfo/default")["id"]["id"]

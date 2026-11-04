@@ -3,7 +3,7 @@
 Login trades username and password for a JWT pair. The access token lives a
 few hours, the refresh token days (both set by the server). Before every
 command a JWT access token that expires within a minute is renewed with the
-refresh token, under a per-profile lock so parallel runs renew once. An API
+refresh token, under a per-context lock so parallel runs renew once. An API
 key, from ``TBCTL_TOKEN`` or ``auth login --api-key``, is used as it is.
 """
 
@@ -17,9 +17,10 @@ from datetime import datetime
 
 import typer
 
-import tbctl.config as cfg
 import tbctl.credentials as credentials
+from tbctl import state
 from tbctl.commands import _client
+from tbctl.config import Context
 
 RENEW_WINDOW_MS = 60_000
 _PRE_VERIFICATION = "PRE_VERIFICATION_TOKEN"
@@ -85,8 +86,8 @@ def logout(url: str, pair: dict) -> None:
     )
 
 
-def _stored_pair(profile: str) -> tuple[dict, str]:
-    cred = credentials.load(profile)
+def _stored_pair(context: Context) -> tuple[dict, str]:
+    cred = credentials.load(context)
     if cred is None:
         raise SessionExpired("cannot be read")
     try:
@@ -96,23 +97,21 @@ def _stored_pair(profile: str) -> tuple[dict, str]:
         raise SessionExpired("cannot be read") from e
 
 
-def renew(profile: str, force: bool = False) -> dict | None:
+def renew(context: Context, force: bool = False) -> dict | None:
     """Renew the stored pair, unless it is still fresh or another process renewed it."""
     from tb_client.exceptions import ApiException
 
-    cfg.CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with open(cfg.CONFIG_DIR / f"{profile}.lock", "w") as lock:
+    with open(state.lock_path(context.safe_key), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        pair, source = _stored_pair(profile)
+        pair, source = _stored_pair(context)
         now = _now_ms()
         if not force and exp_ms(pair["token"]) - now >= RENEW_WINDOW_MS:
             return None
         if exp_ms(pair["refreshToken"]) <= now:
             raise SessionExpired()
-        url = cfg.load(profile)["url"]
         try:
             reply = _client.raw_post(
-                _client.build_client(url),
+                _client.build_client(context.url),
                 "/api/auth/token",
                 {"refreshToken": pair["refreshToken"]},
             )
@@ -122,7 +121,7 @@ def renew(profile: str, force: bool = False) -> dict | None:
             raise
         new = _pair(reply, "/api/auth/token")
         credentials.save(
-            profile,
+            context,
             credentials.JWT,
             json.dumps(new),
             exp_ms(new["refreshToken"]),
@@ -139,26 +138,26 @@ def _describe(e: Exception) -> str:
     return str(e)
 
 
-def ensure_fresh(profile: str) -> tuple[str, str] | None:
+def ensure_fresh(context: Context) -> tuple[str, str] | None:
     """Return the token to send and its header prefix, renewing a JWT about to expire."""
-    cred = credentials.load(profile)
+    cred = credentials.load(context)
     if cred is None:
         return None
     if cred.kind != credentials.JWT:
         return cred.secret, "ApiKey"
     try:
         try:
-            renew(profile)
+            renew(context)
         except SessionExpired:
             raise
         except Exception as e:
-            pair, _ = _stored_pair(profile)
+            pair, _ = _stored_pair(context)
             if exp_ms(pair["token"]) <= _now_ms():
                 typer.echo(f"Could not renew the session ({_describe(e)}).", err=True)
                 raise typer.Exit(1)
             print(f"Warning: could not renew the session ({_describe(e)})", file=sys.stderr)
-        pair, _ = _stored_pair(profile)
+        pair, _ = _stored_pair(context)
     except SessionExpired as e:
-        typer.echo(f"Session for profile '{profile}' {e}. Run `tbctl auth login`.", err=True)
+        typer.echo(f"Session for context '{context.name}' {e}. Run `tbctl auth login`.", err=True)
         raise typer.Exit(1)
     return pair["token"], "Bearer"

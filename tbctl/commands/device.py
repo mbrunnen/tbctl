@@ -5,6 +5,7 @@ import typer
 
 import tbctl.aliases as aliases
 import tbctl.config as cfg
+from tbctl import state
 from tbctl.commands._client import (
     _UUID_RE,
     _save_device_raw,
@@ -28,14 +29,14 @@ def _fmt_ts(ms) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _alias_by_device(profile: str) -> dict[str, str]:
+def _alias_by_device(context: cfg.Context) -> dict[str, str]:
     """Invert the alias table for display; the first alias per device wins.
 
     Keyed by device name and by UUID, so an alias still shows up after the
     device has been renamed on the server.
     """
     result = {}
-    for alias, entry in sorted(aliases.load(profile).items()):
+    for alias, entry in sorted(aliases.load(context).items()):
         result.setdefault(entry.name, alias)
         if entry.id:
             result.setdefault(entry.id, alias)
@@ -118,9 +119,10 @@ def list_devices(
     sort_order: str = typer.Option(None, "--sort-order", help="ASC or DESC."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    alias_of = _alias_by_device(ctx.obj["profile"])
-    customer = customer or cfg.load(ctx.obj["profile"]).get("customer_id")
-    api = device_api(ctx.obj["profile"])
+    context = cfg.active(ctx)
+    alias_of = _alias_by_device(context)
+    customer = customer or state.load(context.key).get("customer_id")
+    api = device_api(context)
     type = _profile_name(api, device_profile)
     try:
         if customer:
@@ -211,7 +213,7 @@ def list_profiles(
     if sort_order:
         query.append(("sortOrder", sort_order))
 
-    api = device_api(ctx.obj["profile"])
+    api = device_api(cfg.active(ctx))
     try:
         page = raw_get(api, "/api/deviceProfiles", query)
     except Exception as e:
@@ -255,9 +257,9 @@ def get_device(
     token: bool = typer.Option(False, "--token", help="Include the device's access token."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    cfg_profile = ctx.obj["profile"]
-    device_id = resolve_device_id(cfg_profile, device)
-    api = device_api(cfg_profile)
+    context = cfg.active(ctx)
+    device_id = resolve_device_id(context, device)
+    api = device_api(context)
     try:
         response = api.get_device_by_id_without_preload_content(device_id=device_id)
         data = raw_json(response)
@@ -293,9 +295,9 @@ def create_device(
         "default", "-p", "--device-profile", help="Device profile name or UUID."
     ),
 ):
-    cfg_profile = ctx.obj["profile"]
-    profile_id = resolve_profile_id(cfg_profile, profile)
-    api = device_api(cfg_profile)
+    context = cfg.active(ctx)
+    profile_id = resolve_profile_id(context, profile)
+    api = device_api(context)
     body = {
         "name": name,
         "label": label,
@@ -320,9 +322,9 @@ def update_device(
         None, "-p", "--device-profile", help="New device profile name or UUID."
     ),
 ):
-    cfg_profile = ctx.obj["profile"]
-    device_id = resolve_device_id(cfg_profile, device)
-    api = device_api(cfg_profile)
+    context = cfg.active(ctx)
+    device_id = resolve_device_id(context, device)
+    api = device_api(context)
     try:
         response = api.get_device_by_id_without_preload_content(device_id=device_id)
         existing = raw_json(response)
@@ -335,7 +337,7 @@ def update_device(
         existing["label"] = label
     if profile is not None:
         existing["deviceProfileId"] = {
-            "id": resolve_profile_id(cfg_profile, profile),
+            "id": resolve_profile_id(context, profile),
             "entityType": "DEVICE_PROFILE",
         }
 
@@ -354,11 +356,11 @@ def delete_device(
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):
-    cfg_profile = ctx.obj["profile"]
-    device_id = resolve_device_id(cfg_profile, device)
+    context = cfg.active(ctx)
+    device_id = resolve_device_id(context, device)
     if not yes:
         typer.confirm(f"Delete device {device_id}?", abort=True)
-    api = device_api(cfg_profile)
+    api = device_api(context)
     try:
         api.delete_device(device_id=device_id)
     except Exception as e:
@@ -374,9 +376,9 @@ def assign_device(
     ),
     customer: str = typer.Option(..., "--customer", "-C", help="Customer UUID to own the device."),
 ):
-    cfg_profile = ctx.obj["profile"]
-    device_id = resolve_device_id(cfg_profile, device)
-    api = owner_api(cfg_profile)
+    context = cfg.active(ctx)
+    device_id = resolve_device_id(context, device)
+    api = owner_api(context)
     try:
         api.change_owner_to_customer(owner_id=customer, entity_type="DEVICE", entity_id=device_id)
     except Exception as e:

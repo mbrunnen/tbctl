@@ -30,6 +30,7 @@ dependencies = [
     "tomli-w>=1.0",
     "plotext>=5",
     "keyring>=25",
+    "tomlkit>=0.12",
 ]
 
 [project.urls]

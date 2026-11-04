@@ -3,8 +3,6 @@ import json
 import typer
 
 import tbctl.config as cfg
-import tbctl.credentials as credentials
-from tbctl import session
 
 app = typer.Typer(no_args_is_help=True, help="Show CLI configuration.")
 
@@ -24,20 +22,34 @@ def show(
     ctx: typer.Context,
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    profile = ctx.obj["profile"]
-    stored = cfg.load(profile)
-    data = {key: stored[key] for key in ("url", "aliases") if key in stored}
-    cred = credentials.load(profile)
-    if not data and not cred:
-        typer.echo("{}" if output_json else f"No configuration found for profile '{profile}'.")
-        return
-    data["auth"] = cred.kind if cred else "not set"
-    if cred:
-        data["source"] = cred.source
-    if cred and cred.source != credentials.ENV and "refresh_expires" in stored:
-        data["refresh_expires"] = session.date(stored["refresh_expires"])
+    """Show the config file, the context in use and its settings."""
+    context = cfg.active(ctx)
+    stored = cfg.table(context)
+    data = {
+        "file": str(context.file),
+        "file_source": context.file_source,
+        "context": context.name,
+        "context_source": context.name_source,
+        "url": context.url,
+    }
+    for key in ("aliases", "protected_attributes"):
+        if key in stored:
+            data[key] = stored[key]
     if output_json:
         typer.echo(json.dumps(data, indent=2))
         return
     for key, value in _flatten(data):
         typer.echo(f"{key} = {value}")
+
+
+@app.command("contexts")
+def list_contexts(ctx: typer.Context):
+    """List the contexts of the config file and mark the default."""
+    try:
+        path, _ = cfg.config_file(cfg.choice(ctx)[0])
+        found = cfg.contexts(cfg.read(path))
+    except cfg.ConfigError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    for name, table in found.items():
+        typer.echo(f"{name} (default)" if table.get("default") is True else name)

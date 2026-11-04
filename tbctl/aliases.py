@@ -1,16 +1,19 @@
-"""Local device aliases, stored per config profile.
+"""Local device aliases, stored per context.
 
 An alias maps a free-text name to a device: the device's ThingsBoard name and,
 optionally, its UUID. ``tbctl telemetry latest ruedi`` then works in place of
 the device's own name, and a stored UUID lets that resolve without the
 name lookup, which needs tenant device-read permission. Aliases live in the
-profile's own config file and never touch the server.
+context's table of the config file and never touch the server.
 """
 
 import re
 from typing import NamedTuple
 
+import tomlkit
+
 import tbctl.config as cfg
+from tbctl.config import Context
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
@@ -28,9 +31,10 @@ def _entry(value: dict) -> Alias:
     return Alias(value["name"], value.get("id"))
 
 
-def _stored(alias: Alias) -> dict[str, str]:
+def _stored(alias: Alias):
     """Render an alias for TOML, which has no way to store a missing UUID."""
-    stored = {"name": alias.name}
+    stored = tomlkit.inline_table()
+    stored["name"] = alias.name
     if alias.id:
         stored["id"] = alias.id
     return stored
@@ -40,13 +44,8 @@ def _table(data: dict) -> dict[str, Alias]:
     return {name: _entry(value) for name, value in data.get("aliases", {}).items()}
 
 
-def load(profile: str = "default") -> dict[str, Alias]:
-    return _table(cfg.load(profile))
-
-
-def _save(data: dict, table: dict[str, Alias], profile: str) -> None:
-    data["aliases"] = {name: _stored(alias) for name, alias in table.items()}
-    cfg.save(data, profile)
+def load(context: Context) -> dict[str, Alias]:
+    return _table(cfg.table(context))
 
 
 def _stored_key(table: dict[str, Alias], name: str) -> str | None:
@@ -58,56 +57,58 @@ def _stored_key(table: dict[str, Alias], name: str) -> str | None:
     return None
 
 
-def resolve(profile: str, name: str) -> Alias | None:
-    table = load(profile)
+def resolve(context: Context, name: str) -> Alias | None:
+    table = load(context)
     key = _stored_key(table, name)
     return table[key] if key else None
 
 
-def add(profile: str, name: str, device: str, device_id: str | None = None) -> Alias | None:
+def _context_table(doc, context: Context):
+    try:
+        return doc["contexts"][context.name]
+    except KeyError:
+        raise cfg.ConfigError(f"context '{context.name}' not in {context.file}") from None
+
+
+def add(context: Context, name: str, device: str, device_id: str | None = None) -> Alias | None:
     """Point ``name`` at a device, returning the entry it replaced.
 
     The entry is replaced whole: adding an alias without a UUID drops the one
-    it had before.
+    it had before. Only this entry is written, so comments in the file stay.
     """
     if device_id and not UUID_RE.match(device_id):
         raise ValueError(f"'{device_id}' is not a device UUID.")
-    data = cfg.load(profile)
-    table = _table(data)
+    doc = cfg.read(context.file)
+    entry = _context_table(doc, context)
+    table = _table(entry)
     key = _stored_key(table, name) or name
     previous = table.get(key)
-    table[key] = Alias(device, device_id)
-    _save(data, table, profile)
+    if "aliases" not in entry:
+        entry["aliases"] = tomlkit.table()
+    entry["aliases"][key] = _stored(Alias(device, device_id))
+    cfg.write(context.file, doc)
     return previous
 
 
-def remove(profile: str, name: str) -> bool:
-    data = cfg.load(profile)
-    table = _table(data)
-    key = _stored_key(table, name)
+def remove(context: Context, name: str) -> bool:
+    doc = cfg.read(context.file)
+    entry = _context_table(doc, context)
+    key = _stored_key(_table(entry), name)
     if key is None:
         return False
-    del table[key]
-    _save(data, table, profile)
+    del entry["aliases"][key]
+    if not entry["aliases"]:
+        del entry["aliases"]
+    cfg.write(context.file, doc)
     return True
 
 
 def complete_device(ctx, incomplete: str) -> list[str]:
-    """Suggest the active profile's aliases for a ``<device>`` argument.
+    """Suggest the active context's aliases for a ``<device>`` argument.
 
-    Purely local: shell completion must not depend on the network. The active
-    profile comes from the root command's ``-c`` option, which sits several
-    context levels up while completing a subcommand argument.
+    Purely local: shell completion must not depend on the network.
     """
-    return sorted(a for a in load(active_profile(ctx)) if a.startswith(incomplete))
-
-
-def active_profile(ctx) -> str:
-    """Return the profile chosen by the root command's ``-c`` option, or ``default``."""
-    node = ctx
-    while node is not None:
-        chosen = (node.params or {}).get("config")
-        if chosen:
-            return chosen
-        node = node.parent
-    return "default"
+    context = cfg.try_active(ctx)
+    if context is None:
+        return []
+    return sorted(a for a in load(context) if a.startswith(incomplete))

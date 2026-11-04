@@ -7,7 +7,7 @@ from enum import Enum
 import typer
 
 import tbctl.aliases as aliases
-from tbctl import keycache
+from tbctl import config, keycache
 from tbctl.commands._client import (
     handle_api_error,
     parse_response,
@@ -120,13 +120,13 @@ def list_keys(
     ),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    profile = ctx.obj["profile"]
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    device_id = resolve_device_id(context, device)
     try:
-        keys = parse_response(telemetry_api(profile).get_timeseries_keys("DEVICE", device_id))
+        keys = parse_response(telemetry_api(context).get_timeseries_keys("DEVICE", device_id))
     except Exception as e:
         handle_api_error(e)
-    keycache.record(profile, device, device_id, keycache.TIMESERIES, keys, full=True)
+    keycache.record(context, device, device_id, keycache.TIMESERIES, keys, full=True)
 
     if output_json:
         typer.echo(json.dumps(keys, indent=2, default=str))
@@ -152,15 +152,15 @@ def latest(
         False, "--local", help="Show timestamps in local time instead of UTC."
     ),
 ):
-    profile = ctx.obj["profile"]
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    device_id = resolve_device_id(context, device)
     try:
         result = parse_response(
-            telemetry_api(profile).get_latest_timeseries("DEVICE", device_id, {}, keys=keys)
+            telemetry_api(context).get_latest_timeseries("DEVICE", device_id, {}, keys=keys)
         )
     except Exception as e:
         handle_api_error(e)
-    keycache.record(profile, device, device_id, keycache.TIMESERIES, result, full=not keys)
+    keycache.record(context, device, device_id, keycache.TIMESERIES, result, full=not keys)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))
@@ -289,14 +289,14 @@ def history(
         end_ms = _parse_time(end, now_ms) if end else now_ms
         start_ms = _parse_time(start, now_ms) if start else end_ms - _DEFAULT_WINDOW_MS
 
-    profile = ctx.obj["profile"]
-    device_id = resolve_device_id(profile, device)
-    api = telemetry_api(profile)
+    context = config.active(ctx)
+    device_id = resolve_device_id(context, device)
+    api = telemetry_api(context)
     full = not keys
     try:
         if full:
             all_keys = parse_response(api.get_timeseries_keys("DEVICE", device_id))
-            keycache.record(profile, device, device_id, keycache.TIMESERIES, all_keys, full=True)
+            keycache.record(context, device, device_id, keycache.TIMESERIES, all_keys, full=True)
             keys = ",".join(all_keys)
         if not keys:
             result = {}
@@ -348,7 +348,7 @@ def history(
     except Exception as e:
         handle_api_error(e)
     if not full:
-        keycache.record(profile, device, device_id, keycache.TIMESERIES, result, full=False)
+        keycache.record(context, device, device_id, keycache.TIMESERIES, result, full=False)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))

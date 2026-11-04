@@ -54,13 +54,19 @@ def _write_scope(scope: str) -> str:
     return canonical
 
 
-def protected_keys(profile: str) -> set[str]:
-    protected = config.load(profile).get("protected_attributes", [])
-    return {protected} if isinstance(protected, str) else set(protected)
+def _keys(value) -> set[str]:
+    return {value} if isinstance(value, str) else set(value)
 
 
-def _refuse_protected(profile: str, keys: Iterable[str]) -> None:
-    hits = protected_keys(profile).intersection(keys)
+def protected_keys(context: config.Context) -> set[str]:
+    """The keys protected in every context, plus those of this one."""
+    doc = config.read(context.file)
+    own = config.contexts(doc).get(context.name, {}).get("protected_attributes", [])
+    return _keys(doc.get("protected_attributes", [])) | _keys(own)
+
+
+def _refuse_protected(context: config.Context, keys: Iterable[str]) -> None:
+    hits = protected_keys(context).intersection(keys)
     if hits:
         typer.echo(
             f"Refusing to change protected attribute(s): {', '.join(sorted(hits))}.", err=True
@@ -111,18 +117,18 @@ def get_attributes(
     ),
 ):
     canonical = _scope_or_exit(scope)
-    profile = ctx.obj["profile"]
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    device_id = resolve_device_id(context, device)
     try:
         result = parse_response(
-            telemetry_api(profile).get_attributes_by_scope(
+            telemetry_api(context).get_attributes_by_scope(
                 "DEVICE", device_id, canonical, {}, keys=keys
             )
         )
     except Exception as e:
         handle_api_error(e)
     keycache.record(
-        profile, device, device_id, canonical, (a["key"] for a in result), full=not keys
+        context, device, device_id, canonical, (a["key"] for a in result), full=not keys
     )
 
     if output_json:
@@ -159,15 +165,15 @@ def list_keys(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
     canonical = _scope_or_exit(scope)
-    profile = ctx.obj["profile"]
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    device_id = resolve_device_id(context, device)
     try:
         keys = parse_response(
-            telemetry_api(profile).get_attribute_keys_by_scope("DEVICE", device_id, canonical)
+            telemetry_api(context).get_attribute_keys_by_scope("DEVICE", device_id, canonical)
         )
     except Exception as e:
         handle_api_error(e)
-    keycache.record(profile, device, device_id, canonical, keys, full=True)
+    keycache.record(context, device, device_id, canonical, keys, full=True)
 
     if output_json:
         typer.echo(json.dumps(keys, indent=2, default=str))
@@ -191,14 +197,14 @@ def set_attributes(
 ):
     canonical = _write_scope(scope)
     data = dict(pairs)
-    profile = ctx.obj["profile"]
-    _refuse_protected(profile, data)
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    _refuse_protected(context, data)
+    device_id = resolve_device_id(context, device)
     try:
-        telemetry_api(profile).save_device_attributes(device_id, canonical, json.dumps(data))
+        telemetry_api(context).save_device_attributes(device_id, canonical, json.dumps(data))
     except Exception as e:
         handle_api_error(e)
-    keycache.record(profile, device, device_id, canonical, data, full=False)
+    keycache.record(context, device, device_id, canonical, data, full=False)
 
     if output_json:
         typer.echo(json.dumps(data, indent=2, default=str))
@@ -219,14 +225,14 @@ def delete_attributes(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):
     canonical = _write_scope(scope)
-    profile = ctx.obj["profile"]
-    _refuse_protected(profile, keys)
-    device_id = resolve_device_id(profile, device)
+    context = config.active(ctx)
+    _refuse_protected(context, keys)
+    device_id = resolve_device_id(context, device)
     names = ", ".join(keys)
     if not yes:
         typer.confirm(f"Delete {names} from {device} ({_short(canonical)})?", abort=True)
     try:
-        telemetry_api(profile).delete_device_attributes(
+        telemetry_api(context).delete_device_attributes(
             device_id, canonical, {}, keys=",".join(keys)
         )
     except Exception as e:

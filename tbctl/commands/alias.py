@@ -3,6 +3,7 @@ import json
 import typer
 
 import tbctl.aliases as aliases
+import tbctl.config as cfg
 
 app = typer.Typer(no_args_is_help=True, help="Manage local device aliases.")
 
@@ -18,7 +19,7 @@ def add_alias(
 ):
     """Point a free-text alias at a device, replacing any existing entry."""
     try:
-        previous = aliases.add(ctx.obj["profile"], name, target, device_id)
+        previous = aliases.add(cfg.active(ctx), name, target, device_id)
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1)
@@ -32,14 +33,14 @@ def list_aliases(
     ctx: typer.Context,
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    profile = ctx.obj["profile"]
-    table = aliases.load(profile)
+    context = cfg.active(ctx)
+    table = aliases.load(context)
 
     if output_json:
         typer.echo(json.dumps({a: e._asdict() for a, e in table.items()}, indent=2))
         return
     if not table:
-        typer.echo(f"No aliases for profile '{profile}'.")
+        typer.echo(f"No aliases for context '{context.name}'.")
         return
 
     from rich.console import Console
@@ -64,7 +65,7 @@ def remove_alias(
     ctx: typer.Context,
     name: str = typer.Argument(help="Alias to remove.", autocompletion=aliases.complete_device),
 ):
-    if not aliases.remove(ctx.obj["profile"], name):
+    if not aliases.remove(cfg.active(ctx), name):
         typer.echo(f"Alias '{name}' not found.", err=True)
         raise typer.Exit(1)
     typer.echo(f"Removed alias '{name}'")

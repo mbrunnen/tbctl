@@ -4,8 +4,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from tbctl import config, keycache
+from tbctl import keycache
 from tbctl.cli import app
+from tbctl.commands.attributes import protected_keys
+from tests.conftest import current
+
+
+@pytest.fixture(autouse=True)
+def _logged_in(config_dir):
+    """The key cache is kept per login, so give the context a user."""
+    from tbctl import state
+
+    state.save(current().key, {"user": "me@example.com"})
+
 
 runner = CliRunner()
 
@@ -105,18 +116,18 @@ def test_get_fills_cache_per_scope():
 
     _invoke(["attributes", "get", DEVICE, "--scope", "server"], api)
 
-    assert keycache.lookup("default", DEVICE, "SERVER_SCOPE") == ["active", "fwVersion"]
-    assert keycache.lookup("default", DEVICE, "SHARED_SCOPE") == []
+    assert keycache.lookup(current(), DEVICE, "SERVER_SCOPE") == ["active", "fwVersion"]
+    assert keycache.lookup(current(), DEVICE, "SHARED_SCOPE") == []
 
 
 def test_get_with_keys_adds_to_cache():
-    keycache.record("default", DEVICE, DEVICE, "SHARED_SCOPE", ["other"], full=True)
+    keycache.record(current(), DEVICE, DEVICE, "SHARED_SCOPE", ["other"], full=True)
     api = MagicMock()
     api.get_attributes_by_scope.return_value = ATTRS
 
     _invoke(["attributes", "get", DEVICE, "--keys", "active,fwVersion"], api)
 
-    assert keycache.lookup("default", DEVICE, "SHARED_SCOPE") == ["active", "fwVersion", "other"]
+    assert keycache.lookup(current(), DEVICE, "SHARED_SCOPE") == ["active", "fwVersion", "other"]
 
 
 def test_get_dict_value_is_compact_json():
@@ -175,7 +186,7 @@ def test_keys_defaults_to_shared_and_fills_cache():
     assert result.exit_code == 0
     assert result.output == "a\nb\n"
     api.get_attribute_keys_by_scope.assert_called_once_with("DEVICE", DEVICE, "SHARED_SCOPE")
-    assert keycache.lookup("default", DEVICE, "SHARED_SCOPE") == ["a", "b"]
+    assert keycache.lookup(current(), DEVICE, "SHARED_SCOPE") == ["a", "b"]
 
 
 def test_keys_server_scope_json():
@@ -198,7 +209,9 @@ def test_keys_empty():
 
 
 def _profile(protected):
-    config.save({"protected_attributes": protected})
+    path = current().file
+    with open(path, "a") as f:
+        f.write(f"protected_attributes = {json.dumps(protected)}\n")
 
 
 def test_set_parses_json_values_into_one_call():
@@ -316,3 +329,26 @@ def test_delete_refuses_client_scope():
 
     assert result.exit_code == 1
     api.delete_device_attributes.assert_not_called()
+
+
+def _global(protected):
+    path = current().file
+    path.write_text(f"protected_attributes = {json.dumps(protected)}\n" + path.read_text())
+
+
+def test_global_protected_attributes_apply_to_every_context():
+    _global(["iccid"])
+    api = MagicMock()
+
+    result = _invoke(["attributes", "set", DEVICE, "iccid=2", "--scope", "server"], api)
+
+    assert result.exit_code == 1
+    assert "iccid" in result.output
+    api.save_device_attributes.assert_not_called()
+
+
+def test_context_protected_attributes_add_to_the_global_ones():
+    _global(["iccid"])
+    _profile(["imei"])
+
+    assert protected_keys(current()) == {"iccid", "imei"}

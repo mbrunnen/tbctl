@@ -9,8 +9,13 @@ from tbctl.commands import alias, attributes, auth, config_cmd, device, ota, tel
 app = typer.Typer(no_args_is_help=True)
 
 
-def complete_profile(incomplete: str) -> list[str]:
-    return [p for p in cfg.list_profiles() if p.startswith(incomplete)]
+def complete_context(ctx, incomplete: str) -> list[str]:
+    try:
+        path, _ = cfg.config_file((ctx.params or {}).get("config"))
+        names = cfg.contexts(cfg.read(path))
+    except Exception:
+        return []
+    return [name for name in names if name.startswith(incomplete)]
 
 
 app.add_typer(auth.app, name="auth")
@@ -25,16 +30,12 @@ app.add_typer(alias.app, name="alias")
 @app.callback()
 def callback(
     ctx: typer.Context,
-    config: str = typer.Option(
-        "default",
-        "-c",
-        "--config",
-        help="Config profile to use.",
-        autocompletion=complete_profile,
+    config: str = typer.Option(None, "-c", "--config", help="Config file."),
+    context: str = typer.Option(
+        None, "--context", help="Context in the config file.", autocompletion=complete_context
     ),
 ):
     ctx.ensure_object(dict)
-    ctx.obj["profile"] = config
 
 
 class Shell(str, Enum):

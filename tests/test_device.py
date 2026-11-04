@@ -3,6 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from tbctl import state
+from tests.conftest import current, second_context
+
 DEVICE_UUID = "11111111-1111-1111-1111-111111111111"
 PROFILE_UUID = "22222222-2222-2222-2222-222222222222"
 
@@ -227,7 +230,7 @@ def test_create_resolves_named_profile():
         result = runner.invoke(app, ["device", "create", "sensor-1", "--device-profile", "custom"])
 
     assert result.exit_code == 0
-    resolve.assert_called_once_with("default", "custom")
+    resolve.assert_called_once_with(current(), "custom")
 
 
 def test_resolve_profile_default():
@@ -237,7 +240,7 @@ def test_resolve_profile_default():
         patch("tbctl.commands._client.device_api", return_value=MagicMock()),
         patch("tbctl.commands._client.raw_get", return_value={"id": {"id": PROFILE_UUID}}),
     ):
-        assert resolve_profile_id("test", "default") == PROFILE_UUID
+        assert resolve_profile_id(current(), "default") == PROFILE_UUID
 
 
 def test_resolve_profile_named_exact_match():
@@ -248,7 +251,7 @@ def test_resolve_profile_named_exact_match():
         patch("tbctl.commands._client.device_api", return_value=MagicMock()),
         patch("tbctl.commands._client.raw_get", return_value=page),
     ):
-        assert resolve_profile_id("test", "custom") == PROFILE_UUID
+        assert resolve_profile_id(current(), "custom") == PROFILE_UUID
 
 
 def test_create_profile_not_found():
@@ -493,7 +496,7 @@ def test_list_shows_an_alias_column():
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add("default", "ruedi", "OX1-Y2HUZR")
+    aliases.add(current(), "ruedi", "OX1-Y2HUZR")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {
@@ -514,7 +517,7 @@ def test_list_matches_an_alias_by_uuid_when_the_device_was_renamed():
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add("default", "ruedi", "OX1-OLDNAME", DEVICE_UUID)
+    aliases.add(current(), "ruedi", "OX1-OLDNAME", DEVICE_UUID)
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict(name="OX1-NEWNAME")], "totalElements": 1}
@@ -542,18 +545,18 @@ def test_list_omits_the_alias_column_without_aliases():
     assert "Alias" not in result.output
 
 
-def test_list_alias_column_follows_the_active_profile():
+def test_list_alias_column_follows_the_active_context(config_dir):
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add("prod", "ruedi", "OX1-Y2HUZR")
+    aliases.add(second_context(config_dir), "ruedi", "OX1-Y2HUZR")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
     )
 
     with patch("tbctl.commands.device.device_api", return_value=mock_api):
-        result = runner.invoke(app, ["-c", "test", "device", "list"])
+        result = runner.invoke(app, ["device", "list"])
 
     assert result.exit_code == 0
     assert "ruedi" not in result.output
@@ -563,8 +566,8 @@ def test_list_shows_the_first_alias_when_a_device_has_several():
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add("default", "ruedi", "OX1-Y2HUZR")
-    aliases.add("default", "chef", "OX1-Y2HUZR")
+    aliases.add(current(), "ruedi", "OX1-Y2HUZR")
+    aliases.add(current(), "chef", "OX1-Y2HUZR")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
@@ -666,11 +669,10 @@ def test_list_rejects_an_unknown_device_profile_uuid():
 
 
 def test_list_uses_stored_customer(config_dir):
-    import tbctl.config as cfg
     from tbctl.cli import app
 
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
-    cfg.save({"url": "https://tb", "customer_id": customer}, "default")
+    state.save(current().key, {"customer_id": customer})
     mock_api = MagicMock()
     mock_api.get_customer_devices_without_preload_content.return_value = _raw_response(
         {"data": [_device_dict()], "totalElements": 1}
