@@ -57,7 +57,7 @@ def _mismatch(context: cfg.Context, key: str, value: str) -> None:
     _fail(f"Context '{context.name}' has {key} = \"{value}\"; edit {context.file} to change it.")
 
 
-def _login_context(ctx, url_flag: str | None) -> tuple[cfg.Context, bool]:
+def _login_context(ctx, url_flag: str | None, quiet: bool) -> tuple[cfg.Context, bool]:
     """Return the context to log in to, and whether it is new.
 
     A context missing from the file, or the first one of an empty file, is
@@ -85,6 +85,8 @@ def _login_context(ctx, url_flag: str | None) -> tuple[cfg.Context, bool]:
         if url_flag and cfg.normalise_url(url_flag) != context.url:
             _mismatch(context, "url", context.url)
         return context, False
+    if not url_flag and quiet:
+        _fail("Pass --url: the context is new and --password-stdin asks for nothing.")
     url = cfg.normalise_url(url_flag or typer.prompt("ThingsBoard URL"))
     name = name or urlparse(url).hostname
     if not name:
@@ -142,6 +144,9 @@ def login(
     user: str | None = typer.Option(
         None, "--user", help="The user of a context that has none yet."
     ),
+    password_stdin: bool = typer.Option(
+        False, "--password-stdin", help="Read the password from the first line of stdin."
+    ),
 ):
     """Log in as the context's user with a password, or store an API key.
 
@@ -149,7 +154,9 @@ def login(
     """
     if os.environ.get(credentials.ENV):
         _fail(f"{credentials.ENV} is set; unset it to log in.")
-    context, new_context = _login_context(ctx, url)
+    if api_key and (user or password_stdin):
+        _fail("--user and --password-stdin cannot be used with --api-key.")
+    context, new_context = _login_context(ctx, url, password_stdin)
     url = context.url
     username = None if new_context else cfg.table(context).get("user")
     if user and username and user != username:
@@ -171,9 +178,16 @@ def login(
         return
     new_user = not username
     username = username or user
+    if not username and password_stdin:
+        _fail("Pass --user: the context has no user and --password-stdin asks for nothing.")
     if not username:
         username = typer.prompt("Username")
-    password = typer.prompt("Password", hide_input=True)
+    if password_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+        if not password:
+            _fail("No password on stdin.")
+    else:
+        password = typer.prompt("Password", hide_input=True)
     try:
         pair = session.login(url, username, password)
     except session.TwoFactorRequired:

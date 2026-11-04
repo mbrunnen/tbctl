@@ -480,3 +480,53 @@ def test_login_over_an_api_key_asks_for_the_password(fake_server):
     assert result.exit_code == 0, result.output
     assert fake_server.paths("POST") == ["/api/auth/login"]
     assert credentials.load(cfg.resolve()).kind == JWT
+
+
+def test_password_stdin_logs_in_without_a_prompt(fake_server, monkeypatch):
+    monkeypatch.setattr("tbctl.commands.auth._stdin_is_tty", lambda: True)
+    result = _login("--password-stdin", input="s3cret\nignored\n")
+    assert result.exit_code == 0, result.output
+    assert "Password" not in result.output
+    assert fake_server.calls[0][3] == {"username": "me@example.com", "password": "s3cret"}
+
+
+def test_password_stdin_empty_fails(fake_server):
+    result = _login("--password-stdin", input="")
+    assert result.exit_code == 1
+    assert "No password on stdin." in result.output
+    assert fake_server.calls == []
+
+
+def test_password_stdin_renews_a_valid_session(fake_server):
+    _logged_in()
+    result = _login("--password-stdin", input="")
+    assert result.exit_code == 0, result.output
+    assert fake_server.paths("POST") == ["/api/auth/token"]
+
+
+def test_password_stdin_without_url_asks_for_nothing(config_dir, fake_server):
+    path = config_dir / "config.toml"
+    path.unlink()
+    result = _login("--password-stdin", input="S3cretPW\n")
+    assert result.exit_code == 1
+    assert "--url" in result.output
+    assert "S3cretPW" not in result.output
+    assert not path.exists()
+
+
+def test_password_stdin_without_user_asks_for_nothing(config_dir, fake_server):
+    _no_user_config(config_dir)
+    result = runner.invoke(
+        app, ["--context", "a", "auth", "login", "--password-stdin"], input="S3cretPW\n"
+    )
+    assert result.exit_code == 1
+    assert "--user" in result.output
+    assert "S3cretPW" not in result.output
+    assert fake_server.calls == []
+
+
+def test_api_key_refuses_user_and_password_stdin(fake_server):
+    for flag in (["--user", "me"], ["--password-stdin"]):
+        result = runner.invoke(app, ["auth", "login", "--api-key", *flag], input="k\n")
+        assert result.exit_code == 1
+        assert "cannot be used with --api-key" in result.output

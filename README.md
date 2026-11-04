@@ -107,7 +107,12 @@ tbctl auth login --url https://tb.example.com --user me@example.com  # no URL or
 ```
 
 `--url` and `--user` replace the prompts; if the file already has another
-value, login fails.
+value, login fails. With `--password-stdin`, login reads the password from the
+first line of stdin and asks for nothing:
+
+```sh
+printf '%s\n' "$PASSWORD" | tbctl auth login --url https://tb.example.com --user me@example.com --password-stdin
+```
 
 `auth login` stores the session the server returns (a JWT access token and its
 refresh token), never the password. Any tbctl command renews the access token
