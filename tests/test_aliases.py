@@ -187,15 +187,15 @@ def test_list_command_json_without_aliases(config_dir):
     assert json.loads(result.output) == {}
 
 
-def test_rm_command_removes_the_alias(config_dir):
+def test_delete_command_removes_the_alias(config_dir):
     aliases.add("default", "horst", "OX1-1T6570")
-    result = runner.invoke(app, ["alias", "rm", "horst"])
+    result = runner.invoke(app, ["alias", "delete", "horst"])
     assert result.exit_code == 0
     assert aliases.load("default") == {}
 
 
-def test_rm_command_reports_an_unknown_alias(config_dir):
-    result = runner.invoke(app, ["alias", "rm", "nobody"])
+def test_delete_command_reports_an_unknown_alias(config_dir):
+    result = runner.invoke(app, ["alias", "delete", "nobody"])
     assert result.exit_code == 1
     assert "nobody" in result.output
 

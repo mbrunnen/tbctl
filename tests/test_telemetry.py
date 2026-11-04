@@ -123,7 +123,8 @@ def test_history_pagination_respects_desc_order(monkeypatch):
     ]
 
     result = _invoke(
-        ["telemetry", "history", DEVICE, "--keys", "log", "--last", "30d", "--order", "DESC"], api
+        ["telemetry", "history", DEVICE, "--keys", "log", "--last", "30d", "--sort-order", "DESC"],
+        api,
     )
 
     assert result.exit_code == 0
@@ -393,7 +394,7 @@ def test_history_last_without_unit_respects_desc_order():
             "temperature",
             "--last",
             "20",
-            "--order",
+            "--sort-order",
             "DESC",
         ],
         api,
@@ -499,7 +500,17 @@ def test_history_wide_table():
 
 def test_history_wide_table_desc():
     result = _wide(
-        ["telemetry", "history", DEVICE, "--keys", "temp,rsrp", "--last", "1h", "--order", "desc"],
+        [
+            "telemetry",
+            "history",
+            DEVICE,
+            "--keys",
+            "temp,rsrp",
+            "--last",
+            "1h",
+            "--sort-order",
+            "desc",
+        ],
         _two_keys_api(),
     )
 

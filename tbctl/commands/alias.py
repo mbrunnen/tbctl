@@ -59,7 +59,7 @@ def list_aliases(
     Console().print(rendered)
 
 
-@app.command("rm")
+@app.command("delete")
 def remove_alias(
     ctx: typer.Context,
     name: str = typer.Argument(help="Alias to remove.", autocompletion=aliases.complete_device),

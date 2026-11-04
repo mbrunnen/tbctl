@@ -52,7 +52,7 @@ def list_packages(
     page_size: int = typer.Option(20, "--page-size", help="Packages per page."),
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on title."),
     version: str = typer.Option(
-        None, "--version", help="Filter by version (client-side, case-insensitive substring)."
+        None, "--version", "-v", help="Filter by version (client-side, case-insensitive substring)."
     ),
     device_profile: str = typer.Option(
         None, "--device-profile", "-p", help="Filter by device profile name or UUID."
@@ -210,7 +210,7 @@ def upload_package(
     device_profile: str = typer.Option(
         ..., "--device-profile", "-p", help="Device profile name or UUID (required by ThingsBoard)."
     ),
-    url: str = typer.Option(None, "--url", help="URL of an externally hosted package."),
+    url: str = typer.Option(None, "--external-url", help="URL of an externally hosted package."),
     checksum_algorithm: str = typer.Option(
         "SHA256", "--checksum-algorithm", help="Checksum algorithm for file uploads."
     ),
@@ -221,7 +221,7 @@ def upload_package(
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
     if bool(file) == bool(url):
-        typer.echo("Provide exactly one source: a FILE argument or --url.", err=True)
+        typer.echo("Provide exactly one source: a FILE argument or --external-url.", err=True)
         raise typer.Exit(1)
 
     cfg_profile = ctx.obj["profile"]

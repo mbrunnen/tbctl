@@ -1095,7 +1095,7 @@ def test_upload_url():
             [
                 "ota",
                 "upload",
-                "--url",
+                "--external-url",
                 "http://example.com/fw.bin",
                 "-T",
                 "fw",
@@ -1159,7 +1159,7 @@ def test_upload_file_and_url_conflict(tmp_path):
                 "ota",
                 "upload",
                 str(fw),
-                "--url",
+                "--external-url",
                 "http://example.com/fw.bin",
                 "-T",
                 "fw",
@@ -1327,7 +1327,7 @@ def test_list_version_filters_client_side():
     mock_api.get_ota_packages.return_value = _page(pkgs, total=3)
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "list", "--version", "0.12"])
+        result = runner.invoke(app, ["ota", "list", "-v", "0.12"])
 
     assert result.exit_code == 0, result.output
     assert "id-2" in result.output

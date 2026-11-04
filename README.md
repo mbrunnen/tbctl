@@ -129,7 +129,7 @@ tbctl ota delete <uuid>
 
 tbctl ota upload firmware.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
 tbctl ota upload firmware.bin --title app-sw --version 1.4.0 --type SOFTWARE --device-profile sensor-v2
-tbctl ota upload --url http://host/fw.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
+tbctl ota upload --external-url http://host/fw.bin --title app-fw --version 1.4.0 --device-profile sensor-v2
 
 tbctl ota download <uuid>                                   # by package id
 tbctl ota download --device-profile sensor-v2               # profile's assigned firmware
@@ -166,7 +166,7 @@ tbctl alias add ruedi OX1-Y2HUZR       # remember a device under a free-text nam
 tbctl alias add horst OX1-1T6570 --id <device-uuid>   # skips the name lookup
 tbctl alias list
 tbctl alias list --json
-tbctl alias rm horst
+tbctl alias delete horst
 tbctl telemetry latest ruedi --keys temperature   # aliases work as <device>
 
 tbctl telemetry keys <device>

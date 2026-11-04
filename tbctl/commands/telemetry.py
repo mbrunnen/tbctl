@@ -242,7 +242,7 @@ def history(
         None, "--limit", help="Max data points per key (default: fetch the full window)."
     ),
     order: Order = typer.Option(
-        Order.ASC, "--order", help="Sort order.", metavar="[ASC|DESC]", case_sensitive=False
+        Order.ASC, "--sort-order", help="Sort order.", metavar="[ASC|DESC]", case_sensitive=False
     ),
     agg: Aggregation = typer.Option(
         None,

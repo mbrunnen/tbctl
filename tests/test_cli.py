@@ -26,3 +26,12 @@ def test_completion_prints_script_for_named_shell():
 def test_completion_rejects_unknown_shell():
     result = CliRunner().invoke(app, ["completion", "tcsh"])
     assert result.exit_code == 2
+
+
+def test_old_spellings_are_gone():
+    for args in (
+        ["alias", "rm", "x"],
+        ["telemetry", "history", "dev", "--order", "ASC"],
+        ["ota", "upload", "--url", "https://x/fw.bin"],
+    ):
+        assert CliRunner().invoke(app, args).exit_code == 2, args
