@@ -53,7 +53,11 @@ def _customer_id(user: dict) -> str | None:
     return None
 
 
-def _login_context(ctx) -> tuple[cfg.Context, bool]:
+def _mismatch(context: cfg.Context, key: str, value: str) -> None:
+    _fail(f"Context '{context.name}' has {key} = \"{value}\"; edit {context.file} to change it.")
+
+
+def _login_context(ctx, url_flag: str | None) -> tuple[cfg.Context, bool]:
     """Return the context to log in to, and whether it is new.
 
     A context missing from the file, or the first one of an empty file, is
@@ -66,9 +70,22 @@ def _login_context(ctx) -> tuple[cfg.Context, bool]:
     except cfg.ConfigError as e:
         _fail(f"Error: {e}")
     name = context_flag or os.environ.get(cfg.CONTEXT_ENV)
+    derived = None
+    if url_flag and not name:
+        wanted = cfg.normalise_url(url_flag)
+        same = [
+            n for n, t in found.items() if t.get("url") and cfg.normalise_url(t["url"]) == wanted
+        ]
+        name = derived = same[0] if same else urlparse(wanted).hostname
     if (name and name in found) or (not name and found):
-        return cfg.active(ctx), False
-    url = cfg.normalise_url(typer.prompt("ThingsBoard URL"))
+        try:
+            context = cfg.resolve(config_flag, derived) if derived else cfg.active(ctx)
+        except cfg.ConfigError as e:
+            _fail(f"Error: {e}")
+        if url_flag and cfg.normalise_url(url_flag) != context.url:
+            _mismatch(context, "url", context.url)
+        return context, False
+    url = cfg.normalise_url(url_flag or typer.prompt("ThingsBoard URL"))
     name = name or urlparse(url).hostname
     if not name:
         _fail(f"Cannot name a context after '{url}'; give the URL with https://.")
@@ -119,6 +136,12 @@ def login(
     insecure_storage: bool = typer.Option(
         False, "--insecure-storage", help="Store the credential in the state file."
     ),
+    url: str | None = typer.Option(
+        None, "--url", help="The URL of a context that is not in the config file yet."
+    ),
+    user: str | None = typer.Option(
+        None, "--user", help="The user of a context that has none yet."
+    ),
 ):
     """Log in as the context's user with a password, or store an API key.
 
@@ -126,9 +149,11 @@ def login(
     """
     if os.environ.get(credentials.ENV):
         _fail(f"{credentials.ENV} is set; unset it to log in.")
-    context, new_context = _login_context(ctx)
+    context, new_context = _login_context(ctx, url)
     url = context.url
     username = None if new_context else cfg.table(context).get("user")
+    if user and username and user != username:
+        _mismatch(context, "user", username)
 
     if api_key:
         if _stdin_is_tty():
@@ -145,7 +170,8 @@ def login(
     if not new_context and _renewed(context):
         return
     new_user = not username
-    if new_user:
+    username = username or user
+    if not username:
         username = typer.prompt("Username")
     password = typer.prompt("Password", hide_input=True)
     try:

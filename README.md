@@ -103,7 +103,11 @@ after the login succeeds:
 ```sh
 tbctl auth login                    # the default context
 tbctl --context PROD auth login     # adds PROD if missing: asks URL and username
+tbctl auth login --url https://tb.example.com --user me@example.com  # no URL or username prompt
 ```
+
+`--url` and `--user` replace the prompts; if the file already has another
+value, login fails.
 
 `auth login` stores the session the server returns (a JWT access token and its
 refresh token), never the password. Any tbctl command renews the access token

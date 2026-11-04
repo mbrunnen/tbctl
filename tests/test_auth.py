@@ -332,9 +332,67 @@ def test_login_stores_no_user_in_the_state(fake_server):
     assert "user" not in state.load(KEY)
 
 
-def test_url_option_is_gone(fake_server):
-    result = runner.invoke(app, ["auth", "login", "--url", URL], input="pw\n")
-    assert result.exit_code == 2
+def test_first_login_with_flags_asks_only_for_the_password(config_dir, fake_server):
+    path = config_dir / "config.toml"
+    path.unlink()
+    result = runner.invoke(
+        app, ["auth", "login", "--url", "https://a.example.com/", "--user", "me"], input="pw\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "URL" not in result.output and "Username" not in result.output
+    assert cfg.contexts(cfg.read(path)) == {
+        "a.example.com": {"url": "https://a.example.com", "user": "me", "default": True}
+    }
+
+
+def test_url_flag_matching_the_file_is_accepted(context, fake_server):
+    assert _login("--url", URL + "/").exit_code == 0
+    assert list(cfg.contexts(cfg.read(context.file))) == ["default"]
+
+
+def test_url_flag_disagreeing_with_the_file_fails(context, fake_server):
+    result = runner.invoke(
+        app, ["--context", "default", "auth", "login", "--url", "https://other"], input="pw\n"
+    )
+    assert result.exit_code == 1
+    assert URL in result.output
+    assert fake_server.calls == []
+
+
+def test_url_without_context_adds_a_context_named_after_the_host(context, fake_server):
+    result = _login("--url", "https://b.example.com", "--user", "me")
+    assert result.exit_code == 0, result.output
+    found = cfg.contexts(cfg.read(context.file))
+    assert found["b.example.com"] == {"url": "https://b.example.com", "user": "me"}
+    assert found["default"]["url"] == URL
+
+
+def test_user_flag_fills_a_missing_user(config_dir, fake_server):
+    path = _no_user_config(config_dir)
+    result = runner.invoke(app, ["--context", "a", "auth", "login", "--user", "me"], input="pw\n")
+    assert result.exit_code == 0, result.output
+    assert "Username" not in result.output
+    assert cfg.contexts(cfg.read(path))["a"]["user"] == "me"
+
+
+def test_user_flag_disagreeing_with_the_file_fails(fake_server):
+    result = _login("--user", "other")
+    assert result.exit_code == 1
+    assert "me@example.com" in result.output
+    assert fake_server.calls == []
+
+
+def test_user_flag_matching_the_file_is_accepted(fake_server):
+    assert _login("--user", "me@example.com").exit_code == 0
+
+
+def test_url_flag_on_a_broken_context_fails_cleanly(context, fake_server):
+    context.file.write_text(context.file.read_text() + '[contexts."b.example.com"]\nuser = "me"\n')
+    for url in ("https://b.example.com", "/"):
+        result = _login("--url", url)
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit), result.exception
+        assert fake_server.calls == []
 
 
 def test_first_login_without_config_creates_the_context(config_dir, fake_server):
