@@ -2,6 +2,7 @@ import json
 import re
 from unittest.mock import ANY, MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from tbctl.cli import app
@@ -11,12 +12,19 @@ runner = CliRunner()
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
+def _info_by_id(api, pkgs):
+    """Answer the info lookup that follows resolving a title to a UUID."""
+    api.get_ota_package_info_by_id.side_effect = lambda ota_package_id: next(
+        p for p in pkgs if p.id.id == ota_package_id
+    )
+
+
 def _strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
 def _mock_package(
-    pkg_id="abc-123",
+    pkg_id="0a0b0c0d-1111-2222-3333-444444444444",
     title="Firmware 1.0",
     version="1.0",
     pkg_type="FIRMWARE",
@@ -39,6 +47,7 @@ def _mock_package(
 def test_list():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [_mock_package()]
+    _info_by_id(mock_api, [_mock_package()])
     mock_api.get_ota_packages.return_value.total_elements = 1
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
@@ -51,6 +60,7 @@ def test_list():
 def test_list_empty():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = []
+    _info_by_id(mock_api, [])
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
         result = runner.invoke(app, ["ota", "list"])
@@ -64,10 +74,12 @@ def test_get_renders_a_table_by_default():
     mock_api.get_ota_package_info_by_id.return_value = _mock_package()
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "get", "abc-123"])
+        result = runner.invoke(app, ["ota", "get", "0a0b0c0d-1111-2222-3333-444444444444"])
 
     assert result.exit_code == 0
-    mock_api.get_ota_package_info_by_id.assert_called_once_with(ota_package_id="abc-123")
+    mock_api.get_ota_package_info_by_id.assert_called_once_with(
+        ota_package_id="0a0b0c0d-1111-2222-3333-444444444444"
+    )
     output = _strip_ansi(result.output)
     assert "Firmware 1.0" in output
     assert not output.lstrip().startswith("{")
@@ -81,7 +93,9 @@ def test_get_json():
     }
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "get", "abc-123", "--json"])
+        result = runner.invoke(
+            app, ["ota", "get", "0a0b0c0d-1111-2222-3333-444444444444", "--json"]
+        )
 
     assert result.exit_code == 0
     assert json.loads(result.output) == {"title": "Firmware 1.0", "version": "1.0"}
@@ -91,28 +105,38 @@ def test_delete():
     mock_api = MagicMock()
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "delete", "abc-123", "--yes"])
+        result = runner.invoke(
+            app, ["ota", "delete", "0a0b0c0d-1111-2222-3333-444444444444", "--yes"]
+        )
 
     assert result.exit_code == 0
-    mock_api.delete_ota_package.assert_called_once_with(ota_package_id="abc-123")
-    assert "Deleted abc-123" in result.output
+    mock_api.delete_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-1111-2222-3333-444444444444"
+    )
+    assert "Deleted 0a0b0c0d-1111-2222-3333-444444444444" in result.output
 
 
 def test_delete_confirm():
     mock_api = MagicMock()
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "delete", "abc-123"], input="y\n")
+        result = runner.invoke(
+            app, ["ota", "delete", "0a0b0c0d-1111-2222-3333-444444444444"], input="y\n"
+        )
 
     assert result.exit_code == 0
-    mock_api.delete_ota_package.assert_called_once_with(ota_package_id="abc-123")
+    mock_api.delete_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-1111-2222-3333-444444444444"
+    )
 
 
 def test_delete_abort():
     mock_api = MagicMock()
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "delete", "abc-123"], input="n\n")
+        result = runner.invoke(
+            app, ["ota", "delete", "0a0b0c0d-1111-2222-3333-444444444444"], input="n\n"
+        )
 
     assert result.exit_code != 0
     mock_api.delete_ota_package.assert_not_called()
@@ -128,9 +152,10 @@ def test_list_json():
         "title": "Firmware 1.0",
         "version": "1.0",
         "type": "FIRMWARE",
-        "id": {"id": "abc-123"},
+        "id": {"id": "0a0b0c0d-1111-2222-3333-444444444444"},
     }
     mock_api.get_ota_packages.return_value.data = [pkg]
+    _info_by_id(mock_api, [pkg])
     mock_api.get_ota_packages.return_value.total_elements = 1
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
@@ -147,6 +172,7 @@ def test_list_json():
 def test_list_json_empty():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = []
+    _info_by_id(mock_api, [])
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
         result = runner.invoke(app, ["ota", "list", "--json"])
@@ -202,7 +228,7 @@ def test_get_api_exception():
     mock_api.get_ota_package_info_by_id.side_effect = ApiException(status=404, reason="Not Found")
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "get", "no-such-id"])
+        result = runner.invoke(app, ["ota", "get", "0a0b0c0d-9999-2222-3333-444444444444"])
 
     assert result.exit_code != 0
     assert "404" in result.stderr
@@ -215,7 +241,9 @@ def test_delete_api_exception():
     mock_api.delete_ota_package.side_effect = ApiException(status=403, reason="Forbidden")
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "delete", "abc-123", "--yes"])
+        result = runner.invoke(
+            app, ["ota", "delete", "0a0b0c0d-1111-2222-3333-444444444444", "--yes"]
+        )
 
     assert result.exit_code != 0
     assert "403" in result.stderr
@@ -296,6 +324,7 @@ def test_list_device_profile_by_name_resolves():
 def test_list_shows_device_profile_column():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [_mock_package(profile_id=_LIST_PROFILE_UUID)]
+    _info_by_id(mock_api, [_mock_package(profile_id=_LIST_PROFILE_UUID)])
     mock_api.get_ota_packages.return_value.total_elements = 1
 
     with (
@@ -315,6 +344,7 @@ def test_list_shows_device_profile_column():
 def test_list_device_profile_column_falls_back_to_uuid():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [_mock_package(profile_id="dp-xyz")]
+    _info_by_id(mock_api, [_mock_package(profile_id="dp-xyz")])
     mock_api.get_ota_packages.return_value.total_elements = 1
 
     with (
@@ -330,6 +360,7 @@ def test_list_device_profile_column_falls_back_to_uuid():
 def test_list_search_filter():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [_mock_package(title="SpecialFW")]
+    _info_by_id(mock_api, [_mock_package(title="SpecialFW")])
     mock_api.get_ota_packages.return_value.total_elements = 1
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
@@ -358,7 +389,11 @@ def test_list_no_config(config_dir):
 
 
 def _mock_info(
-    pkg_id="abc-123", title="Firmware", version="1.0", pkg_type="FIRMWARE", file_name="fw_1.0.bin"
+    pkg_id="0a0b0c0d-1111-2222-3333-444444444444",
+    title="Firmware",
+    version="1.0",
+    pkg_type="FIRMWARE",
+    file_name="fw_1.0.bin",
 ):
     info = MagicMock()
     info.id.id = pkg_id
@@ -376,10 +411,14 @@ def test_download_by_id(tmp_path):
     out = tmp_path / "out.bin"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out)])
+        result = runner.invoke(
+            app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "-o", str(out)]
+        )
 
     assert result.exit_code == 0, result.output
-    mock_api.download_ota_package.assert_called_once_with(ota_package_id="abc-123")
+    mock_api.download_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-1111-2222-3333-444444444444"
+    )
     assert out.read_bytes() == b"BINARY"
 
 
@@ -408,7 +447,7 @@ def test_download_default_filename(tmp_path, monkeypatch):
     mock_api.download_ota_package.return_value = b"BINARY"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "abc-123"])
+        result = runner.invoke(app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444"])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "fw_1.0.bin").read_bytes() == b"BINARY"
@@ -421,7 +460,7 @@ def test_download_fallback_filename(tmp_path, monkeypatch):
     mock_api.download_ota_package.return_value = b"BINARY"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "abc-123"])
+        result = runner.invoke(app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444"])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "Firmware-1.0.bin").read_bytes() == b"BINARY"
@@ -435,7 +474,9 @@ def test_download_refuses_overwrite(tmp_path):
     mock_api.download_ota_package.return_value = b"NEW"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out)])
+        result = runner.invoke(
+            app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "-o", str(out)]
+        )
 
     assert result.exit_code != 0
     assert "exists" in result.stderr
@@ -450,7 +491,10 @@ def test_download_force_overwrite(tmp_path):
     mock_api.download_ota_package.return_value = b"NEW"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "-o", str(out), "--force"])
+        result = runner.invoke(
+            app,
+            ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "-o", str(out), "--force"],
+        )
 
     assert result.exit_code == 0, result.output
     assert out.read_bytes() == b"NEW"
@@ -465,30 +509,34 @@ def test_download_no_selector():
 
 def test_download_multiple_selectors():
     with patch("tbctl.commands.ota._get_api", return_value=MagicMock()):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "--name", "fw"])
+        result = runner.invoke(
+            app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "-p", "sensor"]
+        )
     assert result.exit_code != 0
     assert "exactly one" in result.stderr
 
 
 def test_download_version_and_latest():
     with patch("tbctl.commands.ota._get_api", return_value=MagicMock()):
-        result = runner.invoke(
-            app, ["ota", "download", "--name", "fw", "--version", "1.0", "--latest"]
-        )
+        result = runner.invoke(app, ["ota", "download", "fw", "--version", "1.0", "--latest"])
     assert result.exit_code != 0
     assert "--version" in result.stderr and "--latest" in result.stderr
 
 
-def test_download_latest_without_name():
+def test_download_latest_with_uuid():
     with patch("tbctl.commands.ota._get_api", return_value=MagicMock()):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "--latest"])
+        result = runner.invoke(
+            app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "--latest"]
+        )
     assert result.exit_code != 0
     assert "--latest" in result.stderr
 
 
 def test_download_version_with_id():
     with patch("tbctl.commands.ota._get_api", return_value=MagicMock()):
-        result = runner.invoke(app, ["ota", "download", "abc-123", "--version", "1.0"])
+        result = runner.invoke(
+            app, ["ota", "download", "0a0b0c0d-1111-2222-3333-444444444444", "--version", "1.0"]
+        )
     assert result.exit_code != 0
     assert "--version" in result.stderr
 
@@ -505,10 +553,11 @@ def test_download_by_name_latest(tmp_path, monkeypatch):
     extra.created_time = 300
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [old, new, extra]
+    _info_by_id(mock_api, [old, new, extra])
     mock_api.download_ota_package.return_value = b"NEW"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "Firmware"])
+        result = runner.invoke(app, ["ota", "download", "Firmware", "--latest"])
 
     assert result.exit_code == 0, result.output
     mock_api.download_ota_package.assert_called_once_with(ota_package_id="new")
@@ -522,10 +571,11 @@ def test_download_by_name_version(tmp_path, monkeypatch):
     new.created_time = 200
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [old, new]
+    _info_by_id(mock_api, [old, new])
     mock_api.download_ota_package.return_value = b"OLD"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--version", "1.0"])
+        result = runner.invoke(app, ["ota", "download", "Firmware", "--version", "1.0"])
 
     assert result.exit_code == 0, result.output
     mock_api.download_ota_package.assert_called_once_with(ota_package_id="old")
@@ -539,10 +589,13 @@ def test_download_by_name_type_filter(tmp_path, monkeypatch):
     sw.created_time = 200
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [fw, sw]
+    _info_by_id(mock_api, [fw, sw])
     mock_api.download_ota_package.return_value = b"SW"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--type", "SOFTWARE"])
+        result = runner.invoke(
+            app, ["ota", "download", "Firmware", "--latest", "--type", "SOFTWARE"]
+        )
 
     assert result.exit_code == 0, result.output
     mock_api.download_ota_package.assert_called_once_with(ota_package_id="sw")
@@ -554,10 +607,11 @@ def test_download_by_name_case_insensitive(tmp_path, monkeypatch):
     info.created_time = 100
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [info]
+    _info_by_id(mock_api, [info])
     mock_api.download_ota_package.return_value = b"FW"
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "firmware"])
+        result = runner.invoke(app, ["ota", "download", "firmware", "--latest"])
 
     assert result.exit_code == 0, result.output
     mock_api.download_ota_package.assert_called_once_with(ota_package_id="fw")
@@ -566,9 +620,10 @@ def test_download_by_name_case_insensitive(tmp_path, monkeypatch):
 def test_download_by_name_not_found():
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = []
+    _info_by_id(mock_api, [])
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "Nope"])
+        result = runner.invoke(app, ["ota", "download", "Nope", "--latest"])
 
     assert result.exit_code != 0
     assert "Nope" in result.stderr
@@ -579,9 +634,10 @@ def test_download_by_name_version_not_found():
     info.created_time = 100
     mock_api = MagicMock()
     mock_api.get_ota_packages.return_value.data = [info]
+    _info_by_id(mock_api, [info])
 
     with patch("tbctl.commands.ota._get_api", return_value=mock_api):
-        result = runner.invoke(app, ["ota", "download", "--name", "Firmware", "--version", "9.9"])
+        result = runner.invoke(app, ["ota", "download", "Firmware", "--version", "9.9"])
 
     assert result.exit_code != 0
     assert "9.9" in result.stderr
@@ -844,6 +900,7 @@ def test_assign_by_title_latest():
     page.data[0].created_time = 100
     page.data[1].created_time = 200
     mock_api.get_ota_packages.return_value = page
+    _info_by_id(mock_api, page.data)
 
     with (
         patch("tbctl.commands.ota._get_api", return_value=mock_api),
@@ -852,7 +909,9 @@ def test_assign_by_title_latest():
         patch("tbctl.commands.ota.raw_get", return_value={"id": {"id": ASSIGN_DEVICE_UUID}}),
         patch("tbctl.commands.ota._save_device_raw", return_value={}) as save_raw,
     ):
-        result = runner.invoke(app, ["ota", "assign", "Firmware 1.0", ASSIGN_DEVICE_UUID])
+        result = runner.invoke(
+            app, ["ota", "assign", "Firmware 1.0", ASSIGN_DEVICE_UUID, "--latest"]
+        )
 
     assert result.exit_code == 0, result.output
     assert save_raw.call_args.args[1]["firmwareId"]["id"] == "new"
@@ -868,6 +927,7 @@ def test_assign_by_title_version():
     page.data[0].created_time = 100
     page.data[1].created_time = 200
     mock_api.get_ota_packages.return_value = page
+    _info_by_id(mock_api, page.data)
 
     with (
         patch("tbctl.commands.ota._get_api", return_value=mock_api),
@@ -939,7 +999,7 @@ def test_assign_version_with_uuid_fails():
         )
 
     assert result.exit_code == 1
-    assert "cannot" in result.stderr
+    assert "need a package title" in result.stderr
     save_raw.assert_not_called()
 
 
@@ -993,7 +1053,10 @@ def test_assign_resolves_device_name():
 
 
 def test_unassign_clears_firmware():
-    device = {"id": {"id": ASSIGN_DEVICE_UUID}, "firmwareId": {"id": "abc-123"}}
+    device = {
+        "id": {"id": ASSIGN_DEVICE_UUID},
+        "firmwareId": {"id": "0a0b0c0d-1111-2222-3333-444444444444"},
+    }
 
     with (
         patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
@@ -1025,7 +1088,10 @@ def test_unassign_idempotent_when_unset():
 
 
 def test_unassign_software():
-    device = {"id": {"id": ASSIGN_DEVICE_UUID}, "softwareId": {"id": "abc-123"}}
+    device = {
+        "id": {"id": ASSIGN_DEVICE_UUID},
+        "softwareId": {"id": "0a0b0c0d-1111-2222-3333-444444444444"},
+    }
 
     with (
         patch("tbctl.commands.ota.device_api", return_value=MagicMock()),
@@ -1441,8 +1507,14 @@ _PROFILE = "22222222-2222-2222-2222-222222222222"
 _OTHER_PROFILE = "33333333-3333-3333-3333-333333333333"
 
 
-def _pkg(pkg_id, title, version, pkg_type="FIRMWARE"):
-    return {"id": {"id": pkg_id}, "title": title, "version": version, "type": pkg_type}
+def _pkg(pkg_id, title, version, pkg_type="FIRMWARE", created=0):
+    return {
+        "id": {"id": pkg_id},
+        "title": title,
+        "version": version,
+        "type": pkg_type,
+        "createdTime": created,
+    }
 
 
 def _dev(dev_id, name, profile=_PROFILE, **slots):
@@ -1457,7 +1529,7 @@ def _dev(dev_id, name, profile=_PROFILE, **slots):
 def _fake_server(devices, devices_path="/api/tenant/devices"):
     packages = [
         _pkg("A", "ox1-app", "1.0"),
-        _pkg("B", "ox1-app", "2.0"),
+        _pkg("B", "ox1-app", "2.0", created=2),
         _pkg("C", "other", "1.0"),
         _pkg("S", "ox1-app", "1.0", "SOFTWARE"),
     ]
@@ -1492,11 +1564,11 @@ def _ota_devices(args, devices=_DEVICES, **kw):
 
 
 def test_devices_finds_direct_and_inherited():
-    result = _ota_devices(["ox1-app", "--json"])
+    result = _ota_devices(["ox1-app", "--latest", "-t", "firmware", "--json"])
 
     assert result.exit_code == 0, result.output
     rows = {r["name"]: r for r in json.loads(result.output)}
-    assert set(rows) == {"direct-2.0", "inherits-1.0", "sw-direct"}
+    assert set(rows) == {"direct-2.0"}
     assert rows["direct-2.0"] == {
         "id": "d1",
         "name": "direct-2.0",
@@ -1506,8 +1578,9 @@ def test_devices_finds_direct_and_inherited():
         "version": "2.0",
         "inherited": False,
     }
-    assert rows["inherits-1.0"]["inherited"] is True
-    assert rows["inherits-1.0"]["version"] == "1.0"
+    inherited = _ota_devices(["ox1-app", "-v", "1.0", "-t", "firmware", "--json"])
+    row = json.loads(inherited.output)[0]
+    assert (row["name"], row["inherited"], row["version"]) == ("inherits-1.0", True, "1.0")
 
 
 def test_devices_filters_version_and_type():
@@ -1519,24 +1592,26 @@ def test_devices_filters_version_and_type():
 
 def test_devices_filters_device_profile():
     with patch("tbctl.commands.ota.resolve_profile_id", return_value=_OTHER_PROFILE):
-        result = _ota_devices(["ox1-app", "--device-profile", "gateway", "--json"])
+        result = _ota_devices(
+            ["ox1-app", "-v", "1.0", "-t", "software", "--device-profile", "gateway", "--json"]
+        )
 
     assert result.exit_code == 0, result.output
     assert [r["name"] for r in json.loads(result.output)] == ["sw-direct"]
 
 
 def test_devices_table():
-    result = _ota_devices(["ox1-app"])
+    result = _ota_devices(["ox1-app", "-v", "1.0", "-t", "firmware"])
 
     assert result.exit_code == 0, result.output
     out = _strip_ansi(result.output)
     assert "inherits-1.0" in out
     assert "profile" in out
-    assert "3 devices" in out
+    assert "1 device" in out
 
 
 def test_devices_unknown_package():
-    result = _ota_devices(["nope"])
+    result = _ota_devices(["nope", "--latest"])
 
     assert result.exit_code == 1
     assert "No OTA package 'nope'" in result.output
@@ -1548,10 +1623,13 @@ def test_devices_uses_stored_customer(config_dir):
     customer = "d6b77b60-714f-11f1-ba38-655c002e257c"
     cfg.save({"url": "https://tb", "customer_id": customer}, "default")
 
-    result = _ota_devices(["ox1-app", "--json"], devices_path=f"/api/customer/{customer}/devices")
+    result = _ota_devices(
+        ["ox1-app", "-v", "1.0", "-t", "firmware", "--json"],
+        devices_path=f"/api/customer/{customer}/devices",
+    )
 
     assert result.exit_code == 0, result.output
-    assert len(json.loads(result.output)) == 3
+    assert len(json.loads(result.output)) == 1
 
 
 def test_devices_without_profile_access_warns():
@@ -1571,12 +1649,159 @@ def test_devices_without_profile_access_warns():
         patch("tbctl.commands.ota.raw_get", side_effect=raw_get),
         patch("tbctl.commands._client.raw_get", side_effect=raw_get),
     ):
-        result = runner.invoke(app, ["ota", "devices", "ox1-app", "--json"])
+        result = runner.invoke(
+            app, ["ota", "devices", "ox1-app", "-v", "1.0", "-t", "software", "--json"]
+        )
 
     assert result.exit_code == 0, result.output
     assert "not readable" in result.stderr
     rows = json.loads(result.stdout)
-    assert [(r["name"], r["deviceProfile"]) for r in rows] == [
-        ("direct-2.0", "sensor"),
-        ("sw-direct", _OTHER_PROFILE),
-    ]
+    assert [(r["name"], r["deviceProfile"]) for r in rows] == [("sw-direct", _OTHER_PROFILE)]
+
+
+# --- One <package> argument ---
+
+
+def _titled(pkg_id, version, created, pkg_type="FIRMWARE", title="app"):
+    pkg = _mock_package(pkg_id, title, version, pkg_type)
+    pkg.created_time = created
+    return pkg
+
+
+_APP_PKGS = [
+    _titled("0a0b0c0d-0000-0000-0000-000000000001", "1.0", 100),
+    _titled("0a0b0c0d-0000-0000-0000-000000000002", "2.0", 200),
+]
+
+
+def _ota_api(pkgs=_APP_PKGS):
+    api = MagicMock()
+    api.get_ota_packages.return_value = _page(pkgs, total=len(pkgs))
+    api.get_ota_package_info_by_id.side_effect = lambda ota_package_id: next(
+        p for p in pkgs if p.id.id == ota_package_id
+    )
+    return api
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["get", "app"],
+        ["delete", "app", "-y"],
+        ["devices", "app"],
+        ["assign", "app", ASSIGN_DEVICE_UUID],
+        ["download", "app"],
+    ],
+)
+def test_title_without_version_is_refused(args):
+    api = _ota_api()
+    with (
+        patch("tbctl.commands.ota._get_api", return_value=api),
+        patch("tbctl.commands.ota.device_api"),
+        patch("tbctl.commands.ota.raw_get", return_value={"data": [], "hasNext": False}) as raw_get,
+    ):
+        result = runner.invoke(app, ["ota", *args])
+    assert result.exit_code == 1
+    assert "--version or --latest" in result.stderr
+    api.delete_ota_package.assert_not_called()
+    api.download_ota_package.assert_not_called()
+    raw_get.assert_not_called()
+
+
+def test_get_by_title_and_version():
+    api = _ota_api()
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "get", "APP", "-v", "1.0", "--json"])
+    assert result.exit_code == 0, result.output
+    api.get_ota_package_info_by_id.assert_called_with(
+        ota_package_id="0a0b0c0d-0000-0000-0000-000000000001"
+    )
+
+
+def test_delete_by_title_latest():
+    api = _ota_api()
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "delete", "app", "--latest", "-y"])
+    assert result.exit_code == 0, result.output
+    api.delete_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-0000-0000-0000-000000000002"
+    )
+
+
+def test_title_in_both_types_needs_type():
+    pkgs = [*_APP_PKGS, _titled("0a0b0c0d-0000-0000-0000-000000000003", "1.0", 300, "SOFTWARE")]
+    api = _ota_api(pkgs)
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "delete", "app", "-v", "1.0", "-y"])
+    assert result.exit_code == 1
+    assert "--type" in result.stderr
+    api.delete_ota_package.assert_not_called()
+
+
+def test_same_title_and_version_twice_is_ambiguous():
+    pkgs = [*_APP_PKGS, _titled("0a0b0c0d-0000-0000-0000-000000000004", "1.0", 400)]
+    api = _ota_api(pkgs)
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "delete", "app", "-v", "1.0", "-y"])
+    assert result.exit_code == 1
+    assert "0a0b0c0d-0000-0000-0000-000000000004" in result.stderr
+    api.delete_ota_package.assert_not_called()
+
+
+def test_version_with_uuid_is_refused():
+    api = _ota_api()
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(
+            app, ["ota", "delete", "0a0b0c0d-0000-0000-0000-000000000001", "-v", "1", "-y"]
+        )
+    assert result.exit_code == 1
+    api.delete_ota_package.assert_not_called()
+
+
+def test_devices_by_title_latest():
+    result = _ota_devices(["ox1-app", "--latest", "-t", "firmware", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [r["name"] for r in json.loads(result.output)] == ["direct-2.0"]
+
+
+def test_download_name_option_is_gone():
+    assert runner.invoke(app, ["ota", "download", "-n", "app"]).exit_code == 2
+
+
+def test_download_title_positional_latest(tmp_path):
+    api = _ota_api()
+    api.download_ota_package.return_value = b"fw"
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(
+            app, ["ota", "download", "app", "--latest", "-o", str(tmp_path / "f.bin")]
+        )
+    assert result.exit_code == 0, result.output
+    api.download_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-0000-0000-0000-000000000002"
+    )
+
+
+def test_title_lookup_reads_every_search_page():
+    first = _page([_titled("0a0b0c0d-0000-0000-0000-000000000001", "1.0", 100)])
+    first.has_next = True
+    second = _page([_titled("0a0b0c0d-0000-0000-0000-000000000002", "2.0", 200)])
+    second.has_next = False
+    api = MagicMock()
+    api.get_ota_packages.side_effect = lambda **kw: first if kw["page"] == 0 else second
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "delete", "app", "--latest", "-y"])
+    assert result.exit_code == 0, result.output
+    api.delete_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-0000-0000-0000-000000000002"
+    )
+
+
+def test_type_ambiguity_counts_only_the_named_version():
+    pkgs = [*_APP_PKGS, _titled("0a0b0c0d-0000-0000-0000-000000000003", "9.0", 300, "SOFTWARE")]
+    api = _ota_api(pkgs)
+    with patch("tbctl.commands.ota._get_api", return_value=api):
+        result = runner.invoke(app, ["ota", "delete", "app", "-v", "2.0", "-y"])
+    assert result.exit_code == 0, result.output
+    api.delete_ota_package.assert_called_once_with(
+        ota_package_id="0a0b0c0d-0000-0000-0000-000000000002"
+    )

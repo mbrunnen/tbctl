@@ -136,16 +136,16 @@ tbctl ota download --device-profile sensor-v2               # profile's assigned
 tbctl ota download --device-profile sensor-v2 --version 1.4.0
 tbctl ota download --device thermostat-01                   # device's firmware (falls back to its profile)
 tbctl ota download --device thermostat-01 --version 1.4.0
-tbctl ota download --name app-fw --latest                   # newest package with this title
-tbctl ota download --name app-fw --version 1.4.0 --type SOFTWARE
-tbctl ota download --name app-fw -o ./out.bin --force       # custom path, overwrite if present
+tbctl ota download app-fw --latest                          # newest package with this title
+tbctl ota download app-fw --version 1.4.0 --type SOFTWARE
+tbctl ota download app-fw --latest -o ./out.bin --force     # custom path, overwrite if present
 
-tbctl ota assign app-fw thermostat-01                       # assign latest by title, to a device
+tbctl ota assign app-fw thermostat-01 --latest              # assign the newest version to a device
 tbctl ota assign app-fw thermostat-01 --version 1.4.0 --type SOFTWARE
 tbctl ota assign <package-uuid> <device-uuid>
 tbctl ota unassign thermostat-01                            # clear the device's FIRMWARE assignment
 tbctl ota unassign thermostat-01 --type SOFTWARE
-tbctl ota devices app-fw                                    # devices that run app-fw
+tbctl ota devices app-fw --latest                           # devices that run the newest app-fw
 tbctl ota devices app-fw --version 1.4.0 --type FIRMWARE --device-profile thermostat
 
 tbctl device list

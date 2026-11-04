@@ -282,13 +282,20 @@ def upload_package(
     )
 
 
+_PACKAGE_HELP = "OTA package UUID, or title with --version or --latest."
+
+
 @app.command("get")
 def get_package(
     ctx: typer.Context,
-    id: str = typer.Argument(help="OTA package UUID."),
+    package: str = typer.Argument(help=_PACKAGE_HELP),
+    version: str = typer.Option(None, "--version", "-v", help="Package version (with a title)."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON."),
 ):
-    api = _get_api(ctx.obj["profile"])
+    cfg_profile = ctx.obj["profile"]
+    id = _resolve_package(cfg_profile, package, version, latest, None)
+    api = _get_api(cfg_profile)
     try:
         pkg = api.get_ota_package_info_by_id(ota_package_id=id)
     except Exception as e:
@@ -312,23 +319,13 @@ def get_package(
     )
 
 
-def _validate_selectors(package_id, device_profile, device, name, version, latest):
-    selectors = [package_id, device_profile, device, name]
-    if sum(bool(s) for s in selectors) != 1:
-        typer.echo(
-            "Provide exactly one selector: a package id, --device-profile, --device, or --name.",
-            err=True,
-        )
-        raise typer.Exit(1)
+def _validate_selectors(package, device_profile, device, version, latest):
+    if sum(bool(s) for s in (package, device_profile, device)) != 1:
+        _fail("Provide exactly one selector: a package, --device-profile, or --device.")
     if version and latest:
-        typer.echo("--version and --latest are mutually exclusive.", err=True)
-        raise typer.Exit(1)
-    if latest and not name:
-        typer.echo("--latest is only valid with --name.", err=True)
-        raise typer.Exit(1)
-    if version and package_id:
-        typer.echo("--version cannot be combined with a package id.", err=True)
-        raise typer.Exit(1)
+        _fail("--version and --latest are mutually exclusive.")
+    if latest and not package:
+        _fail("--latest needs a package title.")
 
 
 def _assigned_ota_id(entity, pkg_type, label):
@@ -338,6 +335,74 @@ def _assigned_ota_id(entity, pkg_type, label):
         typer.echo(f"{label} has no {pkg_type} package assigned.", err=True)
         raise typer.Exit(1)
     return ref["id"]
+
+
+def _fail(message):
+    typer.echo(message, err=True)
+    raise typer.Exit(1)
+
+
+def _check_package_args(package, version, latest):
+    """A UUID names one package; a title needs a version or --latest."""
+    if version and latest:
+        _fail("--version and --latest are mutually exclusive.")
+    if _UUID_RE.match(package):
+        if version or latest:
+            _fail("--version and --latest need a package title.")
+    elif not version and not latest:
+        _fail("Give --version or --latest with a package title.")
+
+
+def _choose(candidates, package, version, pkg_type):
+    """Pick one of ``{id, title, version, type, createdTime}`` for a title."""
+    matches = [
+        c
+        for c in candidates
+        if (c["title"] or "").lower() == package.lower() and (not pkg_type or c["type"] == pkg_type)
+    ]
+    if version:
+        matches = [c for c in matches if c["version"] == version]
+    if len({c["type"] for c in matches}) > 1:
+        _fail(f"Package '{package}' exists as FIRMWARE and SOFTWARE; pass --type.")
+    if version:
+        if len(matches) > 1:
+            ids = ", ".join(c["id"] for c in matches)
+            _fail(f"Package '{package}' {version} is ambiguous ({ids}); pass its UUID.")
+    if not matches:
+        at = f" at version '{version}'" if version else ""
+        _fail(f"No OTA package '{package}'{at}.")
+    return max(matches, key=lambda c: c["createdTime"] or 0)["id"]
+
+
+def _resolve_package(cfg_profile, package, version, latest, pkg_type):
+    """Return the UUID of the package named by UUID, or by title with -v or --latest."""
+    _check_package_args(package, version, latest)
+    if _UUID_RE.match(package):
+        return package
+    api = _get_api(cfg_profile)
+    candidates = []
+    number = 0
+    while True:
+        try:
+            page = api.get_ota_packages(
+                page_size=100, page=number, text_search=package, sort_property=None, sort_order=None
+            )
+        except Exception as e:
+            handle_api_error(e)
+        candidates += [
+            {
+                "id": str(p.id.id),
+                "title": p.title,
+                "version": p.version,
+                "type": p.type,
+                "createdTime": p.created_time,
+            }
+            for p in page.data
+        ]
+        if page.has_next is not True:
+            break
+        number += 1
+    return _choose(candidates, package, version, pkg_type)
 
 
 def _select_from_candidates(candidates, version, label):
@@ -368,15 +433,9 @@ def _packages_for_profile(api, profile_id, pkg_type):
     return list(page.data)
 
 
-def _resolve_package_info(
-    cfg_profile, *, package_id, device_profile, device, name, version, latest, pkg_type
-):
+def _resolve_package_info(cfg_profile, *, device_profile, device, version, pkg_type):
+    """Find the package assigned to a device profile or device, or one of its versions."""
     api = _get_api(cfg_profile)
-    if package_id:
-        try:
-            return api, api.get_ota_package_info_by_id(ota_package_id=package_id)
-        except Exception as e:
-            handle_api_error(e)
     if device_profile:
         profile_id = resolve_profile_id(cfg_profile, device_profile)
         if version:
@@ -391,23 +450,6 @@ def _resolve_package_info(
             return api, api.get_ota_package_info_by_id(ota_package_id=ota_id)
         except Exception as e:
             handle_api_error(e)
-    if name:
-        try:
-            page = api.get_ota_packages(
-                page_size=100,
-                page=0,
-                text_search=name,
-                sort_property=None,
-                sort_order=None,
-            )
-        except Exception as e:
-            handle_api_error(e)
-        candidates = [
-            p
-            for p in page.data
-            if (p.title or "").lower() == name.lower() and (p.type or "") == pkg_type
-        ]
-        return api, _select_from_candidates(candidates, version, f"name '{name}'")
     if device:
         device_id = resolve_device_id(cfg_profile, device)
         try:
@@ -449,7 +491,7 @@ def _write_package(info, data, output, force):
 @app.command("download")
 def download_package(
     ctx: typer.Context,
-    package_id: str = typer.Argument(None, help="OTA package UUID."),
+    package: str = typer.Argument(None, help=_PACKAGE_HELP),
     device_profile: str = typer.Option(
         None, "--device-profile", "-p", help="Resolve via device profile name or UUID."
     ),
@@ -460,9 +502,8 @@ def download_package(
         help="Resolve via device name or UUID.",
         autocompletion=aliases.complete_device,
     ),
-    name: str = typer.Option(None, "--name", "-n", help="Resolve by OTA package title."),
     version: str = typer.Option(None, "--version", "-v", help="Specific package version."),
-    latest: bool = typer.Option(False, "--latest", help="Newest version (with --name)."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     type: str = typer.Option("FIRMWARE", "--type", "-t", help="FIRMWARE or SOFTWARE."),
     output: str = typer.Option(None, "--output", "-o", help="Output file path."),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing output."),
@@ -471,19 +512,24 @@ def download_package(
     if pkg_type not in ("FIRMWARE", "SOFTWARE"):
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
-    _validate_selectors(package_id, device_profile, device, name, version, latest)
+    _validate_selectors(package, device_profile, device, version, latest)
 
     cfg_profile = ctx.obj["profile"]
-    api, info = _resolve_package_info(
-        cfg_profile,
-        package_id=package_id,
-        device_profile=device_profile,
-        device=device,
-        name=name,
-        version=version,
-        latest=latest,
-        pkg_type=pkg_type,
-    )
+    if package:
+        package_id = _resolve_package(cfg_profile, package, version, latest, pkg_type)
+        api = _get_api(cfg_profile)
+        try:
+            info = api.get_ota_package_info_by_id(ota_package_id=package_id)
+        except Exception as e:
+            handle_api_error(e)
+    else:
+        api, info = _resolve_package_info(
+            cfg_profile,
+            device_profile=device_profile,
+            device=device,
+            version=version,
+            pkg_type=pkg_type,
+        )
     try:
         data = api.download_ota_package(ota_package_id=str(info.id.id))
     except Exception as e:
@@ -494,12 +540,16 @@ def download_package(
 @app.command("delete")
 def delete_package(
     ctx: typer.Context,
-    id: str = typer.Argument(help="OTA package UUID."),
+    package: str = typer.Argument(help=_PACKAGE_HELP),
+    version: str = typer.Option(None, "--version", "-v", help="Package version (with a title)."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ):
+    cfg_profile = ctx.obj["profile"]
+    id = _resolve_package(cfg_profile, package, version, latest, None)
     if not yes:
         typer.confirm(f"Delete OTA package {id}?", abort=True)
-    api = _get_api(ctx.obj["profile"])
+    api = _get_api(cfg_profile)
     try:
         api.delete_ota_package(ota_package_id=id)
     except Exception as e:
@@ -510,7 +560,7 @@ def delete_package(
 @app.command("assign")
 def assign_package(
     ctx: typer.Context,
-    package: str = typer.Argument(help="OTA package UUID or title."),
+    package: str = typer.Argument(help=_PACKAGE_HELP),
     device: str = typer.Argument(
         help="Device UUID or name.", autocompletion=aliases.complete_device
     ),
@@ -523,25 +573,13 @@ def assign_package(
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
 
-    by_id = bool(_UUID_RE.match(package))
-    if by_id and version:
-        typer.echo("--version cannot be combined with a package UUID.", err=True)
-        raise typer.Exit(1)
-    if version and latest:
-        typer.echo("--version and --latest are mutually exclusive.", err=True)
-        raise typer.Exit(1)
-
     cfg_profile = ctx.obj["profile"]
-    api, info = _resolve_package_info(
-        cfg_profile,
-        package_id=package if by_id else None,
-        device_profile=None,
-        device=None,
-        name=None if by_id else package,
-        version=version,
-        latest=latest,
-        pkg_type=pkg_type,
-    )
+    package_id = _resolve_package(cfg_profile, package, version, latest, pkg_type)
+    api = _get_api(cfg_profile)
+    try:
+        info = api.get_ota_package_info_by_id(ota_package_id=package_id)
+    except Exception as e:
+        handle_api_error(e)
     if (info.type or "") != pkg_type:
         typer.echo(f"Package '{info.title}' is {info.type}, not {pkg_type}.", err=True)
         raise typer.Exit(1)
@@ -607,8 +645,9 @@ def _all_pages(api, path, query=()):
 @app.command("devices")
 def list_devices(
     ctx: typer.Context,
-    title: str = typer.Argument(help="OTA package title (case-insensitive)."),
-    version: str = typer.Option(None, "--version", "-v", help="Package version (exact)."),
+    package: str = typer.Argument(help=_PACKAGE_HELP),
+    version: str = typer.Option(None, "--version", "-v", help="Package version (with a title)."),
+    latest: bool = typer.Option(False, "--latest", help="Newest version (with a title)."),
     type: str = typer.Option(None, "--type", "-t", help="FIRMWARE or SOFTWARE (both if omitted)."),
     device_profile: str = typer.Option(
         None, "--device-profile", "-p", help="Only devices of this profile (name or UUID)."
@@ -620,22 +659,31 @@ def list_devices(
     if pkg_type not in (None, "FIRMWARE", "SOFTWARE"):
         typer.echo("--type must be FIRMWARE or SOFTWARE.", err=True)
         raise typer.Exit(1)
+    _check_package_args(package, version, latest)
 
     cfg_profile = ctx.obj["profile"]
     profile_id = resolve_profile_id(cfg_profile, device_profile) if device_profile else None
     customer = cfg.load(cfg_profile).get("customer_id")
     api = device_api(cfg_profile)
     try:
-        packages = {
-            p["id"]["id"]: p
-            for p in _all_pages(api, "/api/otaPackages")
-            if (p.get("title") or "").lower() == title.lower()
-            and (not version or p.get("version") == version)
-            and (not pkg_type or p.get("type") == pkg_type)
-        }
+        every = _all_pages(api, "/api/otaPackages")
+        if _UUID_RE.match(package):
+            package_id = package
+        else:
+            candidates = [
+                {
+                    "id": p["id"]["id"],
+                    "title": p.get("title"),
+                    "version": p.get("version"),
+                    "type": p.get("type"),
+                    "createdTime": p.get("createdTime"),
+                }
+                for p in every
+            ]
+            package_id = _choose(candidates, package, version, pkg_type)
+        packages = {p["id"]["id"]: p for p in every if p["id"]["id"] == package_id}
         if not packages:
-            typer.echo(f"No OTA package '{title}' matches.", err=True)
-            raise typer.Exit(1)
+            _fail(f"No OTA package '{package}'.")
         try:
             profiles = {p["id"]["id"]: p for p in _all_pages(api, "/api/deviceProfiles")}
         except Exception as e:
