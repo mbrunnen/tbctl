@@ -749,3 +749,69 @@ def test_get_marks_unreadable_profile():
 
     assert result.exit_code == 0, result.output
     assert "? (device profile not readable)" in result.output
+
+
+def test_device_list_fills_the_cache():
+    from tbctl import keycache
+    from tbctl.cli import app
+
+    other = "33333333-1111-1111-1111-111111111111"
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
+        {"data": [_device_dict(), _device_dict(other, "sensor-2")], "totalElements": 2}
+    )
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list"])
+
+    assert result.exit_code == 0
+    assert keycache.device_id(current(), "sensor-1") == DEVICE_UUID
+    assert keycache.device_id(current(), "sensor-2") == other
+
+
+def test_create_remembers_the_name():
+    from tbctl import keycache
+    from tbctl.cli import app
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=MagicMock()),
+        patch("tbctl.commands.device.resolve_profile_id", return_value=PROFILE_UUID),
+        patch("tbctl.commands.device._save_device_raw", return_value={"id": {"id": DEVICE_UUID}}),
+    ):
+        result = runner.invoke(app, ["device", "create", "sensor-1"])
+
+    assert result.exit_code == 0
+    assert keycache.device_id(current(), "sensor-1") == DEVICE_UUID
+
+
+def test_rename_moves_the_cached_name():
+    from tbctl import keycache
+    from tbctl.cli import app
+
+    keycache.remember(current(), {"sensor-1": DEVICE_UUID})
+    mock_api = MagicMock()
+    mock_api.get_device_by_id_without_preload_content.return_value = _raw_response(
+        {"id": {"id": DEVICE_UUID}, "name": "sensor-1"}
+    )
+
+    with (
+        patch("tbctl.commands.device.device_api", return_value=mock_api),
+        patch("tbctl.commands.device._save_device_raw"),
+    ):
+        result = runner.invoke(app, ["device", "update", "sensor-1", "--name", "sensor-9"])
+
+    assert result.exit_code == 0
+    assert keycache.device_names(current()) == ["sensor-9"]
+    assert keycache.device_id(current(), "sensor-9") == DEVICE_UUID
+
+
+def test_delete_forgets_the_device():
+    from tbctl import keycache
+    from tbctl.cli import app
+
+    keycache.remember(current(), {"sensor-1": DEVICE_UUID})
+    with patch("tbctl.commands.device.device_api", return_value=MagicMock()):
+        result = runner.invoke(app, ["device", "delete", "sensor-1", "--yes"])
+
+    assert result.exit_code == 0
+    assert keycache.device_names(current()) == []

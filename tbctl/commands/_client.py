@@ -6,12 +6,15 @@ import typer
 
 import tbctl.aliases as aliases
 import tbctl.credentials as credentials
-from tbctl import state
+from tbctl import keycache, state
 from tbctl.config import Context
 
 _UUID_RE = aliases.UUID_RE
 
 _URI_TEMPLATE_RE = re.compile(r"\{\?[^}]*\}")
+
+# The context, device name and UUID resolve_device_id last took from the cache.
+_cached: tuple[Context, str, str] | None = None
 
 
 def make_api_client(configuration):
@@ -137,6 +140,10 @@ def handle_api_error(e):
         typer.echo(f"Error {e.status}: {_error_detail(e)}", err=True)
         if e.status == 401:
             typer.echo("Run `tbctl auth login` to log in again.", err=True)
+        if e.status in (403, 404) and _cached:
+            context, name, device_id = _cached
+            keycache.forget(context, device_id)
+            typer.echo(f"Dropped the cached UUID of '{name}'. Run the command again.", err=True)
         raise typer.Exit(1)
     raise e
 
@@ -145,10 +152,13 @@ def resolve_device_id(context: Context, device: str) -> str:
     """Return a device UUID, resolving a local alias or a device name.
 
     A local alias takes precedence over a device of the same name, so the
-    mapping the user configured always wins. An alias that carries the device's
-    UUID skips the name lookup, which needs tenant device-read permission, or for
-    a customer user searches that customer's devices.
+    mapping the user configured always wins. A device name is looked up in the
+    local cache first; only a miss asks the server, which needs tenant
+    device-read permission, or for a customer user searches that customer's
+    devices.
     """
+    global _cached
+    _cached = None
     alias = aliases.resolve(context, device)
     if alias:
         if alias.id:
@@ -156,6 +166,10 @@ def resolve_device_id(context: Context, device: str) -> str:
         device = alias.name
     if aliases.UUID_RE.match(device):
         return device
+    cached = keycache.device_id(context, device)
+    if cached:
+        _cached = (context, device, cached)
+        return cached
     from tb_client.exceptions import ApiException
 
     customer_id = state.load(context.key).get("customer_id")
@@ -185,7 +199,9 @@ def resolve_device_id(context: Context, device: str) -> str:
     if not found or found.get("id", {}).get("id") is None:
         typer.echo(f"Device '{device}' not found.", err=True)
         raise typer.Exit(1)
-    return str(found["id"]["id"])
+    device_id = str(found["id"]["id"])
+    keycache.remember(context, {device: device_id})
+    return device_id
 
 
 def raw_json(response):

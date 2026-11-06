@@ -276,7 +276,11 @@ protected_attributes = ["serial_number"]
 
 `<device>` accepts a device UUID, a device name, or a local alias. Name
 resolution needs tenant device-read permission, or a customer login (which
-searches that customer's devices); otherwise pass the UUID directly.
+searches that customer's devices); otherwise pass the UUID directly. Each name
+tbctl resolves and each device `tbctl device list` shows is cached per login, so
+later commands resolve it without a lookup and shell completion offers it. A 403
+or 404 after a cached name drops that entry; run the command again to look it up
+anew. `device create`, `update --name` and `delete` keep the cache in step.
 
 `-p/--device-profile` means the same thing on every command that takes one
 (`ota list|upload|download`, `device list|create|update`) and accepts a device

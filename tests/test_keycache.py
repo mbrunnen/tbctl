@@ -241,10 +241,11 @@ def test_remember_and_device_id():
     assert keycache.device_id(C, "other") is None
 
 
-def test_forget():
-    keycache.remember(C, {"dev1": UUID})
-    keycache.forget(C, "dev1")
-    assert keycache.device_id(C, "dev1") is None
+def test_forget_drops_every_name_of_the_device():
+    other = "99999999-2222-3333-4444-555555555555"
+    keycache.remember(C, {"dev1": UUID, "old": UUID, "dev2": other})
+    keycache.forget(C, UUID)
+    assert keycache.device_names(C) == ["dev2"]
 
 
 def test_device_names_sorted():

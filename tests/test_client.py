@@ -375,3 +375,86 @@ def test_resolve_device_id_by_name_as_customer_not_found(monkeypatch, config_dir
 
     with pytest.raises(typer.Exit):
         resolve_device_id(C, "missing")
+
+
+UUID = "11111111-2222-3333-4444-555555555555"
+UUID2 = "22222222-2222-3333-4444-555555555555"
+
+
+def _tenant_api(monkeypatch, device_id=UUID):
+    from unittest.mock import MagicMock
+
+    api = MagicMock()
+    api.get_tenant_device_without_preload_content.return_value = _device_response(
+        {"id": {"id": device_id}}
+    )
+    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
+    return api
+
+
+def test_resolve_device_id_caches_a_lookup(monkeypatch):
+    api = _tenant_api(monkeypatch)
+    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
+    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
+    api.get_tenant_device_without_preload_content.assert_called_once()
+
+
+def test_resolve_device_id_uses_a_cached_name_without_the_server(monkeypatch):
+    from tbctl import keycache
+
+    api = _tenant_api(monkeypatch)
+    keycache.remember(C, {"OX1-UQEUBW": UUID})
+    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
+    api.get_tenant_device_without_preload_content.assert_not_called()
+
+
+def test_alias_wins_over_a_cached_name(monkeypatch):
+    import tbctl.aliases as aliases
+    from tbctl import keycache
+
+    _tenant_api(monkeypatch)
+    keycache.remember(C, {"horst": UUID, "OX1-Y2HUZR": UUID2})
+    aliases.add(C, "horst", "OX1-Y2HUZR")
+    assert resolve_device_id(C, "horst") == UUID2
+
+
+def test_404_after_a_cache_hit_drops_the_entry(capsys):
+    import typer
+
+    from tb_client.exceptions import ApiException
+    from tbctl import keycache
+
+    keycache.remember(C, {"OX1-UQEUBW": UUID})
+    resolve_device_id(C, "OX1-UQEUBW")
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=404, reason="Not Found"))
+    assert keycache.device_id(C, "OX1-UQEUBW") is None
+    err = capsys.readouterr().err
+    assert "Dropped the cached UUID of 'OX1-UQEUBW'. Run the command again." in err
+
+
+def test_404_without_cache_hit_drops_nothing():
+    import typer
+
+    from tb_client.exceptions import ApiException
+    from tbctl import keycache
+
+    keycache.remember(C, {"OX1-UQEUBW": UUID})
+    resolve_device_id(C, "OX1-UQEUBW")
+    resolve_device_id(C, UUID)
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=404, reason="Not Found"))
+    assert keycache.device_id(C, "OX1-UQEUBW") == UUID
+
+
+def test_403_after_a_cache_hit_drops_the_entry():
+    import typer
+
+    from tb_client.exceptions import ApiException
+    from tbctl import keycache
+
+    keycache.remember(C, {"OX1-UQEUBW": UUID})
+    resolve_device_id(C, "OX1-UQEUBW")
+    with pytest.raises(typer.Exit):
+        handle_api_error(ApiException(status=403, reason="Forbidden"))
+    assert keycache.device_id(C, "OX1-UQEUBW") is None

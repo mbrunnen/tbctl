@@ -86,12 +86,17 @@ def remember(context: Context, names: dict[str, str]) -> None:
     _save(path, data)
 
 
-def forget(context: Context, name: str) -> None:
+def forget(context: Context, device_id: str) -> None:
+    """Drop every cached name of a device."""
     path = _path(context)
     if path is None:
         return
     data = _load(context)
-    if data.get("names", {}).pop(name, None) is not None:
+    names = data.get("names", {})
+    stale = [name for name, uuid in names.items() if uuid == device_id]
+    for name in stale:
+        del names[name]
+    if stale:
         _save(path, data)
 
 

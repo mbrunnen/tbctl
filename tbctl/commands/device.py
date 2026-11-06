@@ -5,7 +5,7 @@ import typer
 
 import tbctl.aliases as aliases
 import tbctl.config as cfg
-from tbctl import state
+from tbctl import keycache, state
 from tbctl.commands._client import (
     _UUID_RE,
     _save_device_raw,
@@ -147,6 +147,14 @@ def list_devices(
         handle_api_error(e)
 
     devices = page.get("data", [])
+    keycache.remember(
+        context,
+        {
+            d["name"]: d["id"]["id"]
+            for d in devices
+            if d.get("name") and (d.get("id") or {}).get("id")
+        },
+    )
 
     if token:
         for d in devices:
@@ -307,6 +315,7 @@ def create_device(
         created = _save_device_raw(api, body)
     except Exception as e:
         handle_api_error(e)
+    keycache.remember(context, {name: created["id"]["id"]})
     typer.echo(f"Created {created['id']['id']}")
 
 
@@ -345,6 +354,9 @@ def update_device(
         _save_device_raw(api, existing)
     except Exception as e:
         handle_api_error(e)
+    if name is not None:
+        keycache.forget(context, device_id)
+        keycache.remember(context, {name: device_id})
     typer.echo(f"Updated {device_id}")
 
 
@@ -365,6 +377,7 @@ def delete_device(
         api.delete_device(device_id=device_id)
     except Exception as e:
         handle_api_error(e)
+    keycache.forget(context, device_id)
     typer.echo(f"Deleted {device_id}")
 
 
