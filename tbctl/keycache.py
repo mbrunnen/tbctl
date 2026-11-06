@@ -112,9 +112,7 @@ def lookup(context: Context, device: str, kind: str) -> list[str]:
     """Return the cached keys; a local alias resolves to its UUID or device name first."""
     data = _load(context)
     names = data.get("names", {})
-    alias = aliases.resolve(context, device)
-    if alias:
-        device = alias.id or alias.name
+    device = aliases.resolve(context, device) or device
     device_id = names.get(device, device)
     return list(data.get("devices", {}).get(device_id, {}).get(kind, []))
 

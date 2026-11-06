@@ -159,11 +159,7 @@ def resolve_device_id(context: Context, device: str) -> str:
     """
     global _cached
     _cached = None
-    alias = aliases.resolve(context, device)
-    if alias:
-        if alias.id:
-            return alias.id
-        device = alias.name
+    device = aliases.resolve(context, device) or device
     if aliases.UUID_RE.match(device):
         return device
     cached = keycache.device_id(context, device)

@@ -230,10 +230,9 @@ tbctl device delete sensor-1 --yes
 tbctl device assign sensor-1 --customer <customer-uuid>
 
 tbctl alias add ruedi OX1-Y2HUZR       # remember a device under a free-text name
-tbctl alias add horst OX1-1T6570 --id <device-uuid>   # skips the name lookup
 tbctl alias list
 tbctl alias list --json
-tbctl alias delete horst
+tbctl alias delete ruedi
 tbctl telemetry latest ruedi --keys temperature   # aliases work as <device>
 
 tbctl telemetry keys <device>
@@ -288,16 +287,13 @@ profile name or a UUID. Every read command prints a table by default and JSON
 with `-j/--json`.
 
 `tbctl alias` stores free-text names for devices in the active context
-(`[contexts.<name>.aliases]` in the config file, one entry per alias with a
-required `name` and an optional `id`); they never leave your machine. An alias
-resolves wherever `<device>` is accepted, takes precedence over a device of the
-same name, and matches case-insensitively. `--id` stores the device UUID
-alongside the name, which is what makes the alias work with a token that lacks
-tenant device-read permission: resolving then needs no name lookup. `alias add`
-replaces the whole entry, so repeating it without `--id` drops a stored UUID.
-Shell completion suggests the aliases of the active context, and `tbctl device
-list` gains an `Alias` column while the context has any, matched by device name
-or UUID.
+(`[contexts.<name>.aliases]` in the config file, one entry per alias with the
+device `name`); they never leave your machine. An alias resolves wherever
+`<device>` is accepted, takes precedence over a device of the same name, and
+matches case-insensitively. The device name it points at resolves like any
+other, so the local cache skips the lookup. Shell completion suggests the
+aliases and cached device names of the active context, and `tbctl device list`
+gains an `Alias` column while the context has any.
 
 `tbctl ota upload` creates a package from exactly one source: a local file
 argument or `--external-url` for an externally hosted package. `--title`, `--version`,

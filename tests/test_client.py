@@ -197,20 +197,6 @@ def test_resolve_device_id_maps_an_alias_to_the_device_name(monkeypatch, config_
     api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-Y2HUZR")
 
 
-def test_resolve_device_id_uses_the_uuid_stored_with_an_alias(monkeypatch, config_dir):
-    from unittest.mock import MagicMock
-
-    import tbctl.aliases as aliases
-
-    uuid = "11111111-2222-3333-4444-555555555555"
-    aliases.add(C, "ruedi", "OX1-Y2HUZR", uuid)
-    api = MagicMock()
-    monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
-
-    assert resolve_device_id(C, "ruedi") == uuid
-    api.get_tenant_device_without_preload_content.assert_not_called()
-
-
 def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monkeypatch, config_dir):
     from unittest.mock import MagicMock
 

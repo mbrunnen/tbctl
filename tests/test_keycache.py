@@ -156,7 +156,8 @@ def test_unusable_cache_dir_is_ignored():
 
 
 def test_lookup_resolves_alias_locally():
-    aliases.add(C, "ruedi", "OX1-Y2HUZR", UUID)
+    aliases.add(C, "ruedi", "OX1-Y2HUZR")
+    keycache.remember(C, {"OX1-Y2HUZR": UUID})
     keycache.record(C, UUID, keycache.TIMESERIES, ["rsrp"], full=True)
     assert keycache.lookup(C, "ruedi", keycache.TIMESERIES) == ["rsrp"]
     assert keycache.lookup(C, "RUEDI", keycache.TIMESERIES) == ["rsrp"]
