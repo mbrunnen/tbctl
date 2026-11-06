@@ -89,7 +89,7 @@ user = "me@example.com"
 default = true
 
 [contexts.preprod.aliases]
-ruedi = { name = "OX1-Y2HUZR" }
+ruedi = { name = "DEVICE-A" }
 
 [contexts.PROD]
 url = "https://prod.example.com"
@@ -229,7 +229,7 @@ tbctl device update sensor-1 --label "Main hall" --device-profile thermostat
 tbctl device delete sensor-1 --yes
 tbctl device assign sensor-1 --customer <customer-uuid>
 
-tbctl alias add ruedi OX1-Y2HUZR       # remember a device under a free-text name
+tbctl alias add ruedi DEVICE-A       # remember a device under a free-text name
 tbctl alias list
 tbctl alias list --json
 tbctl alias delete ruedi

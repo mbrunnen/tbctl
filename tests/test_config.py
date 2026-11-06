@@ -57,14 +57,14 @@ def test_write_keeps_the_previous_file_when_writing_fails(context, monkeypatch):
 
 
 def test_show_flattens_the_alias_table(context):
-    aliases.add(context, "ruedi", "OX1-Y2HUZR")
-    aliases.add(context, "horst", "OX1-1T6570")
+    aliases.add(context, "ruedi", "DEVICE-A")
+    aliases.add(context, "horst", "DEVICE-B")
 
     result = runner.invoke(app, ["config", "show"])
 
     assert result.exit_code == 0
-    assert "aliases.ruedi.name = OX1-Y2HUZR" in result.output
-    assert "aliases.horst.name = OX1-1T6570" in result.output
+    assert "aliases.ruedi.name = DEVICE-A" in result.output
+    assert "aliases.horst.name = DEVICE-B" in result.output
     assert "{" not in result.output
 
 

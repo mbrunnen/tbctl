@@ -83,8 +83,8 @@ def test_resolve_device_id_name_lookup(monkeypatch):
     )
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
-    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-UQEUBW")
+    assert resolve_device_id(C, "DEVICE-E") == "resolved-uuid"
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="DEVICE-E")
 
 
 def test_resolve_device_id_name_lookup_tolerates_default_transport(monkeypatch):
@@ -99,7 +99,7 @@ def test_resolve_device_id_name_lookup_tolerates_default_transport(monkeypatch):
     )
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
+    assert resolve_device_id(C, "DEVICE-E") == "resolved-uuid"
 
 
 def test_resolve_device_id_not_found(monkeypatch):
@@ -177,7 +177,7 @@ def test_resolve_device_id_403_hint(monkeypatch, capsys):
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     with pytest.raises(typer.Exit):
-        resolve_device_id(C, "OX1-UQEUBW")
+        resolve_device_id(C, "DEVICE-E")
     assert "pass the device UUID instead" in capsys.readouterr().err
 
 
@@ -186,7 +186,7 @@ def test_resolve_device_id_maps_an_alias_to_the_device_name(monkeypatch, config_
 
     import tbctl.aliases as aliases
 
-    aliases.add(C, "ruedi", "OX1-Y2HUZR")
+    aliases.add(C, "ruedi", "DEVICE-A")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
@@ -194,7 +194,7 @@ def test_resolve_device_id_maps_an_alias_to_the_device_name(monkeypatch, config_
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     assert resolve_device_id(C, "ruedi") == "resolved-uuid"
-    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-Y2HUZR")
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="DEVICE-A")
 
 
 def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monkeypatch, config_dir):
@@ -202,7 +202,7 @@ def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monke
 
     import tbctl.aliases as aliases
 
-    aliases.add(C, "horst", "OX1-1T6570")
+    aliases.add(C, "horst", "DEVICE-B")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
@@ -210,7 +210,7 @@ def test_resolve_device_id_prefers_an_alias_over_a_device_of_the_same_name(monke
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
     resolve_device_id(C, "horst")
-    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="OX1-1T6570")
+    api.get_tenant_device_without_preload_content.assert_called_once_with(device_name="DEVICE-B")
 
 
 def test_resolve_device_id_takes_an_alias_pointing_at_a_uuid(monkeypatch, config_dir):
@@ -232,7 +232,7 @@ def test_resolve_device_id_uses_the_alias_table_of_the_active_context(monkeypatc
 
     import tbctl.aliases as aliases
 
-    aliases.add(second_context(config_dir), "ruedi", "OX1-Y2HUZR")
+    aliases.add(second_context(config_dir), "ruedi", "DEVICE-A")
     api = MagicMock()
     api.get_tenant_device_without_preload_content.return_value = _device_response(
         {"id": {"id": "resolved-uuid"}}
@@ -335,17 +335,17 @@ def test_resolve_device_id_by_name_as_customer(monkeypatch, config_dir):
     api.get_customer_devices_without_preload_content.return_value = _device_response(
         {
             "data": [
-                {"id": {"id": "other-uuid"}, "name": "OX1-UQEUBW-2"},
-                {"id": {"id": "resolved-uuid"}, "name": "OX1-UQEUBW"},
+                {"id": {"id": "other-uuid"}, "name": "DEVICE-E-2"},
+                {"id": {"id": "resolved-uuid"}, "name": "DEVICE-E"},
             ]
         }
     )
     monkeypatch.setattr("tbctl.commands._client.device_api", lambda context: api)
 
-    assert resolve_device_id(C, "OX1-UQEUBW") == "resolved-uuid"
+    assert resolve_device_id(C, "DEVICE-E") == "resolved-uuid"
     api.get_tenant_device_without_preload_content.assert_not_called()
     api.get_customer_devices_without_preload_content.assert_called_once_with(
-        customer_id=customer, page_size=100, page=0, text_search="OX1-UQEUBW"
+        customer_id=customer, page_size=100, page=0, text_search="DEVICE-E"
     )
 
 
@@ -380,8 +380,8 @@ def _tenant_api(monkeypatch, device_id=UUID):
 
 def test_resolve_device_id_caches_a_lookup(monkeypatch):
     api = _tenant_api(monkeypatch)
-    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
-    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
+    assert resolve_device_id(C, "DEVICE-E") == UUID
+    assert resolve_device_id(C, "DEVICE-E") == UUID
     api.get_tenant_device_without_preload_content.assert_called_once()
 
 
@@ -389,8 +389,8 @@ def test_resolve_device_id_uses_a_cached_name_without_the_server(monkeypatch):
     from tbctl import keycache
 
     api = _tenant_api(monkeypatch)
-    keycache.remember(C, {"OX1-UQEUBW": UUID})
-    assert resolve_device_id(C, "OX1-UQEUBW") == UUID
+    keycache.remember(C, {"DEVICE-E": UUID})
+    assert resolve_device_id(C, "DEVICE-E") == UUID
     api.get_tenant_device_without_preload_content.assert_not_called()
 
 
@@ -399,8 +399,8 @@ def test_alias_wins_over_a_cached_name(monkeypatch):
     from tbctl import keycache
 
     _tenant_api(monkeypatch)
-    keycache.remember(C, {"horst": UUID, "OX1-Y2HUZR": UUID2})
-    aliases.add(C, "horst", "OX1-Y2HUZR")
+    keycache.remember(C, {"horst": UUID, "DEVICE-A": UUID2})
+    aliases.add(C, "horst", "DEVICE-A")
     assert resolve_device_id(C, "horst") == UUID2
 
 
@@ -410,13 +410,13 @@ def test_404_after_a_cache_hit_drops_the_entry(capsys):
     from tb_client.exceptions import ApiException
     from tbctl import keycache
 
-    keycache.remember(C, {"OX1-UQEUBW": UUID})
-    resolve_device_id(C, "OX1-UQEUBW")
+    keycache.remember(C, {"DEVICE-E": UUID})
+    resolve_device_id(C, "DEVICE-E")
     with pytest.raises(typer.Exit):
         handle_api_error(ApiException(status=404, reason="Not Found"))
-    assert keycache.device_id(C, "OX1-UQEUBW") is None
+    assert keycache.device_id(C, "DEVICE-E") is None
     err = capsys.readouterr().err
-    assert "Dropped the cached UUID of 'OX1-UQEUBW'. Run the command again." in err
+    assert "Dropped the cached UUID of 'DEVICE-E'. Run the command again." in err
 
 
 def test_404_without_cache_hit_drops_nothing():
@@ -425,12 +425,12 @@ def test_404_without_cache_hit_drops_nothing():
     from tb_client.exceptions import ApiException
     from tbctl import keycache
 
-    keycache.remember(C, {"OX1-UQEUBW": UUID})
-    resolve_device_id(C, "OX1-UQEUBW")
+    keycache.remember(C, {"DEVICE-E": UUID})
+    resolve_device_id(C, "DEVICE-E")
     resolve_device_id(C, UUID)
     with pytest.raises(typer.Exit):
         handle_api_error(ApiException(status=404, reason="Not Found"))
-    assert keycache.device_id(C, "OX1-UQEUBW") == UUID
+    assert keycache.device_id(C, "DEVICE-E") == UUID
 
 
 def test_403_after_a_cache_hit_drops_the_entry():
@@ -439,8 +439,8 @@ def test_403_after_a_cache_hit_drops_the_entry():
     from tb_client.exceptions import ApiException
     from tbctl import keycache
 
-    keycache.remember(C, {"OX1-UQEUBW": UUID})
-    resolve_device_id(C, "OX1-UQEUBW")
+    keycache.remember(C, {"DEVICE-E": UUID})
+    resolve_device_id(C, "DEVICE-E")
     with pytest.raises(typer.Exit):
         handle_api_error(ApiException(status=403, reason="Forbidden"))
-    assert keycache.device_id(C, "OX1-UQEUBW") is None
+    assert keycache.device_id(C, "DEVICE-E") is None

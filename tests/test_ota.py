@@ -1531,10 +1531,10 @@ def _dev(dev_id, name, profile=_PROFILE, **slots):
 
 def _fake_server(devices, devices_path="/api/tenant/devices"):
     packages = [
-        _pkg("A", "ox1-app", "1.0"),
-        _pkg("B", "ox1-app", "2.0", created=2),
+        _pkg("A", "demo-app", "1.0"),
+        _pkg("B", "demo-app", "2.0", created=2),
         _pkg("C", "other", "1.0"),
-        _pkg("S", "ox1-app", "1.0", "SOFTWARE"),
+        _pkg("S", "demo-app", "1.0", "SOFTWARE"),
     ]
     profiles = [
         {"id": {"id": _PROFILE}, "name": "sensor", "firmwareId": {"id": "A"}},
@@ -1567,7 +1567,7 @@ def _ota_devices(args, devices=_DEVICES, **kw):
 
 
 def test_devices_finds_direct_and_inherited():
-    result = _ota_devices(["ox1-app", "--latest", "-t", "firmware", "--json"])
+    result = _ota_devices(["demo-app", "--latest", "-t", "firmware", "--json"])
 
     assert result.exit_code == 0, result.output
     rows = {r["name"]: r for r in json.loads(result.output)}
@@ -1577,17 +1577,17 @@ def test_devices_finds_direct_and_inherited():
         "name": "direct-2.0",
         "deviceProfile": "sensor",
         "type": "FIRMWARE",
-        "title": "ox1-app",
+        "title": "demo-app",
         "version": "2.0",
         "inherited": False,
     }
-    inherited = _ota_devices(["ox1-app", "-v", "1.0", "-t", "firmware", "--json"])
+    inherited = _ota_devices(["demo-app", "-v", "1.0", "-t", "firmware", "--json"])
     row = json.loads(inherited.output)[0]
     assert (row["name"], row["inherited"], row["version"]) == ("inherits-1.0", True, "1.0")
 
 
 def test_devices_filters_version_and_type():
-    result = _ota_devices(["OX1-APP", "--version", "1.0", "--type", "firmware", "--json"])
+    result = _ota_devices(["DEMO-APP", "--version", "1.0", "--type", "firmware", "--json"])
 
     assert result.exit_code == 0, result.output
     assert [r["name"] for r in json.loads(result.output)] == ["inherits-1.0"]
@@ -1596,7 +1596,7 @@ def test_devices_filters_version_and_type():
 def test_devices_filters_device_profile():
     with patch("tbctl.commands.ota.resolve_profile_id", return_value=_OTHER_PROFILE):
         result = _ota_devices(
-            ["ox1-app", "-v", "1.0", "-t", "software", "--device-profile", "gateway", "--json"]
+            ["demo-app", "-v", "1.0", "-t", "software", "--device-profile", "gateway", "--json"]
         )
 
     assert result.exit_code == 0, result.output
@@ -1604,7 +1604,7 @@ def test_devices_filters_device_profile():
 
 
 def test_devices_table():
-    result = _ota_devices(["ox1-app", "-v", "1.0", "-t", "firmware"])
+    result = _ota_devices(["demo-app", "-v", "1.0", "-t", "firmware"])
 
     assert result.exit_code == 0, result.output
     out = _strip_ansi(result.output)
@@ -1625,7 +1625,7 @@ def test_devices_uses_stored_customer(config_dir):
     state.save(current().key, {"customer_id": customer})
 
     result = _ota_devices(
-        ["ox1-app", "-v", "1.0", "-t", "firmware", "--json"],
+        ["demo-app", "-v", "1.0", "-t", "firmware", "--json"],
         devices_path=f"/api/customer/{customer}/devices",
     )
 
@@ -1651,7 +1651,7 @@ def test_devices_without_profile_access_warns():
         patch("tbctl.commands._client.raw_get", side_effect=raw_get),
     ):
         result = runner.invoke(
-            app, ["ota", "devices", "ox1-app", "-v", "1.0", "-t", "software", "--json"]
+            app, ["ota", "devices", "demo-app", "-v", "1.0", "-t", "software", "--json"]
         )
 
     assert result.exit_code == 0, result.output
@@ -1760,7 +1760,7 @@ def test_version_with_uuid_is_refused():
 
 
 def test_devices_by_title_latest():
-    result = _ota_devices(["ox1-app", "--latest", "-t", "firmware", "--json"])
+    result = _ota_devices(["demo-app", "--latest", "-t", "firmware", "--json"])
     assert result.exit_code == 0, result.output
     assert [r["name"] for r in json.loads(result.output)] == ["direct-2.0"]
 

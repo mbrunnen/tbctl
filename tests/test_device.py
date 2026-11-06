@@ -496,11 +496,11 @@ def test_list_shows_an_alias_column():
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add(current(), "ruedi", "OX1-Y2HUZR")
+    aliases.add(current(), "ruedi", "DEVICE-A")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
         {
-            "data": [_device_dict(name="OX1-Y2HUZR"), _device_dict(name="OX1-ZZ0001")],
+            "data": [_device_dict(name="DEVICE-A"), _device_dict(name="DEVICE-D")],
             "totalElements": 2,
         }
     )
@@ -532,10 +532,10 @@ def test_list_alias_column_follows_the_active_context(config_dir):
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add(second_context(config_dir), "ruedi", "OX1-Y2HUZR")
+    aliases.add(second_context(config_dir), "ruedi", "DEVICE-A")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
-        {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
+        {"data": [_device_dict(name="DEVICE-A")], "totalElements": 1}
     )
 
     with patch("tbctl.commands.device.device_api", return_value=mock_api):
@@ -549,11 +549,11 @@ def test_list_shows_the_first_alias_when_a_device_has_several():
     import tbctl.aliases as aliases
     from tbctl.cli import app
 
-    aliases.add(current(), "ruedi", "OX1-Y2HUZR")
-    aliases.add(current(), "chef", "OX1-Y2HUZR")
+    aliases.add(current(), "ruedi", "DEVICE-A")
+    aliases.add(current(), "chef", "DEVICE-A")
     mock_api = MagicMock()
     mock_api.get_tenant_devices_without_preload_content.return_value = _raw_response(
-        {"data": [_device_dict(name="OX1-Y2HUZR")], "totalElements": 1}
+        {"data": [_device_dict(name="DEVICE-A")], "totalElements": 1}
     )
 
     with patch("tbctl.commands.device.device_api", return_value=mock_api):
@@ -689,12 +689,12 @@ def _get_with_raw(device, raw_get):
 def test_get_shows_assigned_firmware():
     def raw_get(_api, path, *args):
         assert path == "/api/otaPackage/info/fw-1"
-        return {"title": "ox1-app", "version": "1.4.2"}
+        return {"title": "demo-app", "version": "1.4.2"}
 
     result = _get_with_raw({**_device_dict(), "firmwareId": {"id": "fw-1"}}, raw_get)
 
     assert result.exit_code == 0, result.output
-    assert "ox1-app 1.4.2" in result.output
+    assert "demo-app 1.4.2" in result.output
     assert "inherited" not in result.output
 
 
@@ -703,14 +703,14 @@ def test_get_shows_software_inherited_from_profile():
         if path == f"/api/deviceProfile/{PROFILE_UUID}":
             return {"softwareId": {"id": "sw-9"}}
         if path == "/api/otaPackage/info/sw-9":
-            return {"title": "ox1-cfg", "version": "0.9.0"}
+            return {"title": "demo-cfg", "version": "0.9.0"}
         raise AssertionError(path)
 
     device = {**_device_dict(), "deviceProfileId": {"id": PROFILE_UUID}}
     result = _get_with_raw(device, raw_get)
 
     assert result.exit_code == 0, result.output
-    assert "ox1-cfg 0.9.0 (inherited from profile)" in result.output
+    assert "demo-cfg 0.9.0 (inherited from profile)" in result.output
 
 
 def test_get_marks_unreadable_package():
