@@ -127,9 +127,7 @@ def get_attributes(
         )
     except Exception as e:
         handle_api_error(e)
-    keycache.record(
-        context, device, device_id, canonical, (a["key"] for a in result), full=not keys
-    )
+    keycache.record(context, device_id, canonical, (a["key"] for a in result), full=not keys)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))
@@ -173,7 +171,7 @@ def list_keys(
         )
     except Exception as e:
         handle_api_error(e)
-    keycache.record(context, device, device_id, canonical, keys, full=True)
+    keycache.record(context, device_id, canonical, keys, full=True)
 
     if output_json:
         typer.echo(json.dumps(keys, indent=2, default=str))
@@ -204,7 +202,7 @@ def set_attributes(
         telemetry_api(context).save_device_attributes(device_id, canonical, json.dumps(data))
     except Exception as e:
         handle_api_error(e)
-    keycache.record(context, device, device_id, canonical, data, full=False)
+    keycache.record(context, device_id, canonical, data, full=False)
 
     if output_json:
         typer.echo(json.dumps(data, indent=2, default=str))

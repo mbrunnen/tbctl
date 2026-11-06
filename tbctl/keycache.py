@@ -5,7 +5,7 @@ from the config file: what a user may read decides the keys, so two contexts
 with the same login share it. A context without ``user`` caches nothing.
 
 The file maps each device UUID to its time-series keys and its attribute keys per
-scope, and each name or alias the user typed to the UUID it resolved to.
+scope, and each device name tbctl resolved or listed to its UUID.
 """
 
 import contextlib
@@ -51,21 +51,7 @@ def _load(context: Context) -> dict:
     return data
 
 
-def record(
-    context: Context, device: str, device_id: str, kind: str, keys: Iterable[str], full: bool
-) -> None:
-    """Store the keys of one kind for a device; a full listing replaces, a partial one adds."""
-    path = _path(context)
-    if path is None:
-        return
-    data = _load(context)
-    names = data.setdefault("names", {})
-    if device != device_id:
-        names[device] = device_id
-    entry = data.setdefault("devices", {}).setdefault(device_id, {})
-    known = set() if full else set(entry.get(kind, []))
-    entry[kind] = sorted(known | set(keys))
-
+def _save(path: Path, data: dict) -> None:
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
     with contextlib.suppress(OSError):
         try:
@@ -76,6 +62,45 @@ def record(
             os.replace(tmp, path)
         finally:
             tmp.unlink(missing_ok=True)
+
+
+def record(context: Context, device_id: str, kind: str, keys: Iterable[str], full: bool) -> None:
+    """Store the keys of one kind for a device; a full listing replaces, a partial one adds."""
+    path = _path(context)
+    if path is None:
+        return
+    data = _load(context)
+    entry = data.setdefault("devices", {}).setdefault(device_id, {})
+    known = set() if full else set(entry.get(kind, []))
+    entry[kind] = sorted(known | set(keys))
+    _save(path, data)
+
+
+def remember(context: Context, names: dict[str, str]) -> None:
+    """Store the UUID of each device name, replacing what was known."""
+    path = _path(context)
+    if path is None or not names:
+        return
+    data = _load(context)
+    data.setdefault("names", {}).update(names)
+    _save(path, data)
+
+
+def forget(context: Context, name: str) -> None:
+    path = _path(context)
+    if path is None:
+        return
+    data = _load(context)
+    if data.get("names", {}).pop(name, None) is not None:
+        _save(path, data)
+
+
+def device_id(context: Context, name: str) -> str | None:
+    return _load(context).get("names", {}).get(name)
+
+
+def device_names(context: Context) -> list[str]:
+    return sorted(_load(context).get("names", {}))
 
 
 def lookup(context: Context, device: str, kind: str) -> list[str]:

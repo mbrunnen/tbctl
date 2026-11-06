@@ -126,7 +126,7 @@ def list_keys(
         keys = parse_response(telemetry_api(context).get_timeseries_keys("DEVICE", device_id))
     except Exception as e:
         handle_api_error(e)
-    keycache.record(context, device, device_id, keycache.TIMESERIES, keys, full=True)
+    keycache.record(context, device_id, keycache.TIMESERIES, keys, full=True)
 
     if output_json:
         typer.echo(json.dumps(keys, indent=2, default=str))
@@ -160,7 +160,7 @@ def latest(
         )
     except Exception as e:
         handle_api_error(e)
-    keycache.record(context, device, device_id, keycache.TIMESERIES, result, full=not keys)
+    keycache.record(context, device_id, keycache.TIMESERIES, result, full=not keys)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))
@@ -296,7 +296,7 @@ def history(
     try:
         if full:
             all_keys = parse_response(api.get_timeseries_keys("DEVICE", device_id))
-            keycache.record(context, device, device_id, keycache.TIMESERIES, all_keys, full=True)
+            keycache.record(context, device_id, keycache.TIMESERIES, all_keys, full=True)
             keys = ",".join(all_keys)
         if not keys:
             result = {}
@@ -348,7 +348,7 @@ def history(
     except Exception as e:
         handle_api_error(e)
     if not full:
-        keycache.record(context, device, device_id, keycache.TIMESERIES, result, full=False)
+        keycache.record(context, device_id, keycache.TIMESERIES, result, full=False)
 
     if output_json:
         typer.echo(json.dumps(result, indent=2, default=str))

@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 import tbctl.aliases as aliases
 import tbctl.config as cfg
+from tbctl import keycache
 from tbctl.cli import app
 from tests.conftest import second_context
 from tests.test_ota import _strip_ansi
@@ -284,3 +285,11 @@ def test_alias_add_keeps_comments(context):
     aliases.add(context, "lab", "OXLC-1")
     assert context.file.read_text().startswith("# servers\n")
     assert aliases.resolve(context, "LAB") == aliases.Alias("OXLC-1")
+
+
+def test_complete_device_offers_aliases_and_cached_names(context):
+    aliases.add(context, "ruedi", "OX1-Y2HUZR")
+    keycache.remember(context, {"OX1-Y2HUZR": UUID_A, "OX1-AAAAAA": UUID_B})
+    ctx = _completion_context(None)
+    assert aliases.complete_device(ctx, "") == ["OX1-AAAAAA", "OX1-Y2HUZR", "ruedi"]
+    assert aliases.complete_device(ctx, "OX1-A") == ["OX1-AAAAAA"]

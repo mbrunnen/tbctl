@@ -121,7 +121,7 @@ def test_get_fills_cache_per_scope():
 
 
 def test_get_with_keys_adds_to_cache():
-    keycache.record(current(), DEVICE, DEVICE, "SHARED_SCOPE", ["other"], full=True)
+    keycache.record(current(), DEVICE, "SHARED_SCOPE", ["other"], full=True)
     api = MagicMock()
     api.get_attributes_by_scope.return_value = ATTRS
 

@@ -104,11 +104,14 @@ def remove(context: Context, name: str) -> bool:
 
 
 def complete_device(ctx, incomplete: str) -> list[str]:
-    """Suggest the active context's aliases for a ``<device>`` argument.
+    """Suggest the active context's aliases and cached device names for ``<device>``.
 
     Purely local: shell completion must not depend on the network.
     """
+    from tbctl import keycache
+
     context = cfg.try_active(ctx)
     if context is None:
         return []
-    return sorted(a for a in load(context) if a.startswith(incomplete))
+    names = set(load(context)) | set(keycache.device_names(context))
+    return sorted(n for n in names if n.startswith(incomplete))

@@ -306,17 +306,8 @@ def test_keys_fills_cache():
     assert keycache.lookup(current(), DEVICE, keycache.TIMESERIES) == ["humidity", "temperature"]
 
 
-def test_keys_cache_is_indexed_by_the_typed_name():
-    api = MagicMock()
-    api.get_timeseries_keys.return_value = "['rsrp']"
-
-    _invoke(["telemetry", "keys", "OX1DEV-FOGMAZ"], api)
-
-    assert keycache.lookup(current(), "OX1DEV-FOGMAZ", keycache.TIMESERIES) == ["rsrp"]
-
-
 def test_history_without_keys_replaces_cache():
-    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    keycache.record(current(), DEVICE, keycache.TIMESERIES, ["gone"], full=True)
     api = MagicMock()
     api.get_timeseries_keys.return_value = "['rsrp']"
     api.get_timeseries.return_value = "{}"
@@ -327,7 +318,7 @@ def test_history_without_keys_replaces_cache():
 
 
 def test_history_with_keys_adds_to_cache():
-    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    keycache.record(current(), DEVICE, keycache.TIMESERIES, ["a"], full=True)
     api = MagicMock()
     api.get_timeseries.return_value = "{'temperature': [{'ts': 1700000000000, 'value': '21.5'}]}"
 
@@ -337,7 +328,7 @@ def test_history_with_keys_adds_to_cache():
 
 
 def test_latest_without_keys_replaces_cache():
-    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["gone"], full=True)
+    keycache.record(current(), DEVICE, keycache.TIMESERIES, ["gone"], full=True)
     api = MagicMock()
     api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
 
@@ -347,7 +338,7 @@ def test_latest_without_keys_replaces_cache():
 
 
 def test_latest_with_keys_adds_to_cache():
-    keycache.record(current(), DEVICE, DEVICE, keycache.TIMESERIES, ["a"], full=True)
+    keycache.record(current(), DEVICE, keycache.TIMESERIES, ["a"], full=True)
     api = MagicMock()
     api.get_latest_timeseries.return_value = "{'soc': [{'ts': 1700000000000, 'value': '18'}]}"
 
