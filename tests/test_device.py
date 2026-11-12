@@ -798,3 +798,41 @@ def test_delete_forgets_the_device():
 
     assert result.exit_code == 0
     assert keycache.device_names(current()) == []
+
+
+def test_list_fetches_every_page():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_tenant_devices_without_preload_content.side_effect = [
+        _raw_response({"data": [_device_dict(name="first")], "totalElements": 2, "hasNext": True}),
+        _raw_response(
+            {"data": [_device_dict(name="second")], "totalElements": 2, "hasNext": False}
+        ),
+    ]
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list", "--json"])
+
+    assert result.exit_code == 0
+    assert [d["name"] for d in json.loads(result.output)] == ["first", "second"]
+    pages = [
+        c.kwargs["page"] for c in mock_api.get_tenant_devices_without_preload_content.call_args_list
+    ]
+    assert pages == [0, 1]
+
+
+def test_list_customer_fetches_every_page():
+    from tbctl.cli import app
+
+    mock_api = MagicMock()
+    mock_api.get_customer_devices_without_preload_content.side_effect = [
+        _raw_response({"data": [_device_dict(name="first")], "hasNext": True}),
+        _raw_response({"data": [_device_dict(name="second")], "hasNext": False}),
+    ]
+
+    with patch("tbctl.commands.device.device_api", return_value=mock_api):
+        result = runner.invoke(app, ["device", "list", "-C", PROFILE_UUID, "--json"])
+
+    assert result.exit_code == 0
+    assert [d["name"] for d in json.loads(result.output)] == ["first", "second"]

@@ -100,7 +100,7 @@ def _ota_rows(api, device):
 @app.command("list")
 def list_devices(
     ctx: typer.Context,
-    page_size: int = typer.Option(20, "--page-size", help="Devices per page."),
+    page_size: int = typer.Option(20, "--page-size", help="Devices per request."),
     text_search: str = typer.Option(None, "--search", "-s", help="Substring filter on name."),
     device_profile: str = typer.Option(
         None, "-p", "--device-profile", help="Filter by device profile name or UUID."
@@ -118,29 +118,33 @@ def list_devices(
     customer = customer or state.load(context.key).get("customer_id")
     api = device_api(context)
     type = _profile_name(api, device_profile)
-    try:
-        if customer:
-            response = api.get_customer_devices_without_preload_content(
-                customer_id=customer,
-                page_size=page_size,
-                page=0,
-                type=type,
-                text_search=text_search,
-            )
-        else:
-            response = api.get_tenant_devices_without_preload_content(
-                page_size=page_size,
-                page=0,
-                type=type,
-                text_search=text_search,
-                sort_property=sort_property,
-                sort_order=sort_order,
-            )
-        page = raw_json(response)
-    except Exception as e:
-        handle_api_error(e)
-
-    devices = page.get("data", [])
+    devices = []
+    page = {"hasNext": True}
+    number = 0
+    while page.get("hasNext"):
+        try:
+            if customer:
+                response = api.get_customer_devices_without_preload_content(
+                    customer_id=customer,
+                    page_size=page_size,
+                    page=number,
+                    type=type,
+                    text_search=text_search,
+                )
+            else:
+                response = api.get_tenant_devices_without_preload_content(
+                    page_size=page_size,
+                    page=number,
+                    type=type,
+                    text_search=text_search,
+                    sort_property=sort_property,
+                    sort_order=sort_order,
+                )
+            page = raw_json(response)
+        except Exception as e:
+            handle_api_error(e)
+        devices += page.get("data", [])
+        number += 1
     keycache.remember(
         context,
         {
@@ -192,7 +196,7 @@ def list_devices(
         table.add_row(*row)
     console = Console()
     console.print(table)
-    footer = f"Showing {len(devices)} of {page.get('totalElements', len(devices))} devices"
+    footer = f"Showing {len(devices)} devices"
     if customer:
         footer += f" owned by '{_customer_name(api, customer)}'"
     console.print(footer)
